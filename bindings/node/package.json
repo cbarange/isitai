@@ -1,0 +1,33 @@
+{
+  "name": "isitai",
+  "version": "0.1.0-alpha.0",
+  "description": "Local, offline check for proof or signals that a text, image, audio, video or PDF was made by AI (C2PA, IPTC, generator metadata).",
+  "keywords": ["ai-detection", "c2pa", "content-credentials", "iptc", "provenance", "deepfake"],
+  "license": "MIT",
+  "author": "cbarange",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "native.js", "README.md"],
+  "engines": { "node": ">= 18" },
+  "napi": {
+    "binaryName": "isitai",
+    "packageName": "@cbarange/isitai",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-musl",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release --js native.js --dts native.d.ts",
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.10.12"
+  }
+}

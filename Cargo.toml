@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/isitai-core", "crates/isitai-cli", "bindings/python", "bindings/node"]
+
+[workspace.package]
+version = "0.1.0-alpha.0"
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = 3
+codegen-units = 1
+
+# Size-optimised profile used to measure package size (criterion 7).
+[profile.size]
+inherits = "release"
+opt-level = "z"
+panic = "abort"

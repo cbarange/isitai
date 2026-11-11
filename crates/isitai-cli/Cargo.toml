@@ -1,0 +1,19 @@
+[package]
+name = "isitai-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "isitai"
+path = "src/main.rs"
+
+[features]
+default = ["pdf"]
+pdf = ["isitai/pdf"]
+c2pa-text = ["isitai/c2pa-text"]
+
+[dependencies]
+# default-features = false so that `--no-default-features` on the CLI really drops `pdf`.
+isitai = { path = "../isitai-core", default-features = false }
+serde_json = "1"

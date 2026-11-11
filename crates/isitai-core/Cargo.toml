@@ -1,0 +1,21 @@
+[package]
+name = "isitai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# PDF costs +0.5 MB (measured in bench/RESULTS.md), so it is on by default.
+default = ["pdf"]
+# C2PA read support for PDF (c2pa `pdf` feature).
+pdf = ["c2pa/pdf"]
+# C2PA for plain text; upstream API is unstable, so it stays opt-in.
+c2pa-text = ["c2pa/unstable_plain_text", "c2pa/unstable_structured_text"]
+
+[dependencies]
+c2pa = { version = "=0.92.0", default-features = false, features = ["rust_native_crypto"] }
+infer = "0.22"
+regex = "1.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1.2"

@@ -1,0 +1,47 @@
+# Text artifact rules. Patterns use Rust `regex` syntax.
+# strength: "strong" (one is enough for ai-signal) or "weak" (two distinct needed).
+# Patterns marked `verified = false` come from memory and must be confirmed on the corpus.
+
+[[rule]]
+id = "text.oaicite"
+strength = "strong"
+verified = false
+detail = "ChatGPT citation placeholder left by copy-paste"
+pattern = ':contentReference\[oaicite:\d+\]\{index=\d+\}|【oaicite:\d+】'
+
+[[rule]]
+id = "text.citeturn"
+strength = "strong"
+verified = false
+detail = "ChatGPT search citation token left by copy-paste"
+pattern = '\bturn\d+(?:search|news|view|fetch|file|image)\d+\b'
+
+[[rule]]
+id = "text.utm-ai"
+strength = "strong"
+verified = false
+detail = "Link tagged by an AI assistant"
+pattern = 'utm_source=(?:chatgpt\.com|openai)\b'
+
+[[rule]]
+id = "text.self-disclosure"
+strength = "strong"
+verified = false
+detail = "Assistant self-disclosure phrase"
+pattern = '(?i)\bas an AI (?:language )?model\b|\bas of my (?:last )?knowledge (?:update|cutoff)\b|\ben tant qu(?:e |\x27|’)(?:modèle de langage|IA\b|intelligence artificielle)'
+
+[[rule]]
+id = "text.zero-width"
+strength = "weak"
+verified = false
+# U+200D (ZWJ) is excluded on purpose: emoji sequences use it.
+# U+202F / U+00A0 are normal French typography and are never rules.
+detail = "Zero-width character inside the text"
+pattern = '[\x{200B}\x{2060}]|.\x{FEFF}'
+
+[[rule]]
+id = "text.markdown-residue"
+strength = "weak"
+verified = false
+detail = "Markdown formatting left in plain text"
+pattern = '(?m)^#{2,6} \S|\*\*[^*\n]{2,80}\*\*'

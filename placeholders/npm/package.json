@@ -1,0 +1,10 @@
+{
+  "name": "isitai",
+  "version": "0.0.1",
+  "description": "Local, offline check for proof or signals that a text, image, audio, video or PDF was made by AI (C2PA, IPTC, generator metadata). Work in progress.",
+  "keywords": ["ai-detection", "c2pa", "content-credentials", "iptc", "provenance", "deepfake"],
+  "license": "MIT",
+  "author": "cbarange",
+  "main": "index.js",
+  "files": ["index.js", "README.md"]
+}

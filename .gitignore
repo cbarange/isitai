@@ -1,0 +1,22 @@
+# Secrets: never commit
+.env
+.env.*
+*.pem
+.npmrc*
+!placeholders/npm/.npmrc-cbarange
+
+# Build outputs
+/target
+**/target/
+dist/
+*.node
+bindings/node/native.js
+bindings/node/native.d.ts
+bindings/node/npm/
+
+# Tooling
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,3 @@
+# Used only to publish as cbarange without touching the default npm login.
+# npm reads the token from the NPM_TOKEN environment variable; no secret is stored here.
+//registry.npmjs.org/:_authToken=${NPM_TOKEN}

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["maturin>=1.16,<2"]
+build-backend = "maturin"
+
+[project]
+name = "isitai"
+version = "0.1.0a0"
+description = "Local, offline check for proof or signals that a text, image, audio, video or PDF was made by AI (C2PA, IPTC, generator metadata)."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "cbarange" }]
+keywords = ["ai-detection", "c2pa", "content-credentials", "iptc", "provenance", "deepfake"]
+classifiers = ["Development Status :: 2 - Pre-Alpha", "Programming Language :: Rust"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "isitai._isitai"
+features = ["pyo3/extension-module"]

@@ -1,0 +1,28 @@
+# Unsigned metadata rules.
+
+# IPTC Digital Source Type values (https://cv.iptc.org/newscodes/digitalsourcetype/).
+[digital_source_type]
+ai = ["trainedAlgorithmicMedia", "compositeWithTrainedAlgorithmicMedia"]
+capture = ["digitalCapture", "computationalCapture"]
+
+# PNG tEXt/iTXt/zTXt keywords written by local image generators.
+[[png_key]]
+key = "parameters"
+generator = "Stable Diffusion WebUI (A1111/Forge)"
+
+[[png_key]]
+key = "prompt"
+generator = "ComfyUI"
+
+[[png_key]]
+key = "workflow"
+generator = "ComfyUI"
+
+[[png_key]]
+key = "invokeai_metadata"
+generator = "InvokeAI"
+
+# PNG `Software` value containing this text.
+[[png_software]]
+contains = "NovelAI"
+generator = "NovelAI"
