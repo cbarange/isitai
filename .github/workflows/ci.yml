@@ -106,7 +106,7 @@ jobs:
           cargo build --release -p isitai-cli
           (cd bindings/node && npm ci --ignore-scripts && npm run build)
           python -m venv .venv
-          .venv/bin/pip install --quiet maturin==1.16.0 c2pa-python==0.38.2
+          .venv/bin/pip install --quiet maturin==1.16.0 c2pa-python==0.38.0  # 0.38.1 and 0.38.2 shipped no Linux wheels
           (cd bindings/python && ../../.venv/bin/maturin build --release --out dist)
           .venv/bin/pip install --quiet --pre --no-index --find-links bindings/python/dist isitai
       - name: Fetch c2pa-rs fixtures and build the signed corpus

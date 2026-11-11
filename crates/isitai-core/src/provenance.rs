@@ -1,4 +1,5 @@
-use crate::{Evidence, Layer, Location, Origin, Strength};
+use crate::rules::Dst;
+use crate::{Evidence, Layer, Location, Strength};
 use c2pa::{Context, Reader, ValidationState};
 use serde_json::{json, Value};
 use std::io::{Read, Seek};
@@ -15,6 +16,7 @@ pub fn read<R: Read + Seek + Send>(
     input: &mut R,
     mime: &str,
     anchors_pem: Option<&str>,
+    dst_rules: &Dst,
 ) -> Result<Option<Provenance>, String> {
     let mut settings = json!({
         "verify": { "remote_manifest_fetch": false, "ocsp_fetch": false, "verify_trust": true }
@@ -84,6 +86,10 @@ pub fn read<R: Read + Seek + Send>(
                 continue;
             };
             let value = dst.rsplit('/').next().unwrap_or(dst).to_string();
+            // Neutral values (e.g. `digitalArt`) are not evidence either way.
+            let Some(origin) = dst_rules.origin(&value) else {
+                continue;
+            };
             if seen.contains(&value) {
                 continue;
             }
@@ -92,7 +98,7 @@ pub fn read<R: Read + Seek + Send>(
                 id: format!("c2pa.dst.{value}"),
                 layer: Layer::Provenance,
                 strength,
-                origin: Origin::Ai, // fixed below
+                origin,
                 detail: format!(
                     "C2PA {} action declares digitalSourceType {value} (manifest {state_name})",
                     action["action"].as_str().unwrap_or("?")
@@ -104,20 +110,4 @@ pub fn read<R: Read + Seek + Send>(
         }
     }
     Ok(Some(out))
-}
-
-/// Maps DST values to an origin, dropping neutral ones (e.g. `digitalArt`).
-pub fn classify(p: &mut Provenance, ai: &[String], capture: &[String]) {
-    p.evidence.retain_mut(|e| {
-        let value = e.id.trim_start_matches("c2pa.dst.");
-        if ai.iter().any(|v| v == value) {
-            e.origin = Origin::Ai;
-            true
-        } else if capture.iter().any(|v| v == value) {
-            e.origin = Origin::Capture;
-            true
-        } else {
-            false
-        }
-    });
 }

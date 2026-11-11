@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "isitai"
 version = "0.1.0a0"
 description = "Local, offline check for proof or signals that a text, image, audio, video or PDF was made by AI (C2PA, IPTC, generator metadata)."
-readme = "README.md"
+readme = "../../README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [{ name = "cbarange" }]

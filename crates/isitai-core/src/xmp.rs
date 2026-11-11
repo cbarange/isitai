@@ -44,12 +44,13 @@ fn scan_window(window: &[u8], rules: &Rules, out: &mut Vec<Evidence>) {
     for packet in packet_re().find_iter(window) {
         for cap in dst_re().captures_iter(packet.as_bytes()) {
             let value = String::from_utf8_lossy(&cap[1]).into_owned();
-            let (origin, strength) = if rules.dst.ai.contains(&value) {
-                (Origin::Ai, Strength::Strong)
-            } else if rules.dst.capture.contains(&value) {
-                (Origin::Capture, Strength::Weak)
-            } else {
+            let Some(origin) = rules.dst.origin(&value) else {
                 continue;
+            };
+            // Unsigned metadata: an AI claim is a strong hint, a capture claim only a weak one.
+            let strength = match origin {
+                Origin::Ai => Strength::Strong,
+                Origin::Capture => Strength::Weak,
             };
             let id = format!("xmp.dst.{value}");
             if out.iter().any(|e| e.id == id) {

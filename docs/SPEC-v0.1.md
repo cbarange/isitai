@@ -208,3 +208,16 @@ Crates : `c2pa` (sans `openssl` ni `default_http` : pas d'OpenSSL système, pas 
 
 - Une image passée par un réseau social perd souvent son EXIF et son C2PA. Elle tombera en `no-signal`, et le README le dit en premier.
 - Le score de probabilité arrivera avec les classifieurs, en plugin, au plus tôt en v0.4.
+
+## Checklist avant 0.1.0
+
+- [ ] **Liste de confiance C2PA embarquée.** Source officielle : `c2pa-org/conformance-public`, fichier `trust-list/C2PA-TRUST-LIST.pem` (licence CC-BY-4.0, attribution dans le README). Synchronisée automatiquement par la C2PA, environ toutes les 1 à 3 semaines (relevé du 2026-11-12). À faire :
+  - embarquer le PEM dans le crate, versionné, avec sa date et son commit source ;
+  - l'utiliser par défaut, avec une option pour le remplacer ;
+  - ajouter un workflow planifié qui ouvre une PR quand la liste change.
+
+  Sans elle, aucun fichier réel (ChatGPT, Firefly…) ne peut atteindre `ai-proven`.
+- [ ] Liste TSA (`C2PA-TSA-TRUST-LIST.pem`) : vérifier si `c2pa-rs` en a besoin pour valider les horodatages.
+- [ ] Corpus réel : au moins un fichier par générateur (ChatGPT, Firefly, Gemini, Midjourney) et des photos d'appareils signées.
+- [ ] Mesurer l'addon Node en profil `size` (9,4 Mo en `release`, limite de 10 Mo).
+- [ ] Valider en CI le build `wasm32-wasip1-threads`.

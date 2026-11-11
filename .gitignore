@@ -3,7 +3,6 @@
 .env.*
 *.pem
 .npmrc*
-!placeholders/npm/.npmrc-cbarange
 
 # Build outputs
 /target
@@ -23,3 +22,5 @@ __pycache__/
 *.so
 *.pyd
 *.dylib
+# Copied from the root README at build time
+bindings/*/README.md

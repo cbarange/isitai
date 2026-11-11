@@ -177,9 +177,13 @@ pub fn check_reader<R: Read + Seek + Send>(mut input: R, opts: &Options, rules: 
     let mut evidence = Vec::new();
     let mut generator = None;
 
-    match provenance::read(&mut input, &mime, opts.trust_anchors_pem.as_deref()) {
-        Ok(Some(mut p)) => {
-            provenance::classify(&mut p, &rules.dst.ai, &rules.dst.capture);
+    match provenance::read(
+        &mut input,
+        &mime,
+        opts.trust_anchors_pem.as_deref(),
+        &rules.dst,
+    ) {
+        Ok(Some(p)) => {
             generator = p.generator;
             evidence.extend(p.evidence);
             warnings.extend(p.warnings);

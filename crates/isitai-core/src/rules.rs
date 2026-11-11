@@ -1,4 +1,4 @@
-use crate::Strength;
+use crate::{Origin, Strength};
 use regex::Regex;
 use serde::Deserialize;
 
@@ -29,6 +29,19 @@ struct MetadataFile {
 pub struct Dst {
     pub ai: Vec<String>,
     pub capture: Vec<String>,
+}
+
+impl Dst {
+    /// Origin a DigitalSourceType value points to; `None` for neutral values (e.g. `digitalArt`).
+    pub fn origin(&self, value: &str) -> Option<Origin> {
+        if self.ai.iter().any(|v| v == value) {
+            Some(Origin::Ai)
+        } else if self.capture.iter().any(|v| v == value) {
+            Some(Origin::Capture)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Deserialize, Clone)]
