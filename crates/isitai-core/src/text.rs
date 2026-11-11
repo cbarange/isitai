@@ -11,7 +11,11 @@ pub fn scan(input: &str, rules: &Rules) -> Vec<Evidence> {
             layer: Layer::Artifact,
             strength: rule.strength,
             origin: Origin::Ai,
-            detail: format!("{} ({count} occurrence{})", rule.detail, if count > 1 { "s" } else { "" }),
+            detail: format!(
+                "{} ({count} occurrence{})",
+                rule.detail,
+                if count > 1 { "s" } else { "" }
+            ),
             location: Some(Location::Span {
                 start: first.start(),
                 end: first.end(),
@@ -32,18 +36,27 @@ mod tests {
 
     #[test]
     fn plain_human_text_has_no_signal() {
-        assert_eq!(v("Bonjour, je rentre demain soir. On se voit samedi ?"), Verdict::NoSignal);
+        assert_eq!(
+            v("Bonjour, je rentre demain soir. On se voit samedi ?"),
+            Verdict::NoSignal
+        );
     }
 
     #[test]
     fn french_typography_is_not_a_signal() {
         // U+202F narrow no-break space and U+00A0 before French punctuation.
-        assert_eq!(v("Il a dit\u{202F}: «\u{00A0}oui\u{00A0}»\u{202F}!"), Verdict::NoSignal);
+        assert_eq!(
+            v("Il a dit\u{202F}: «\u{00A0}oui\u{00A0}»\u{202F}!"),
+            Verdict::NoSignal
+        );
     }
 
     #[test]
     fn emoji_zwj_is_not_a_signal() {
-        assert_eq!(v("Famille \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} au parc"), Verdict::NoSignal);
+        assert_eq!(
+            v("Famille \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} au parc"),
+            Verdict::NoSignal
+        );
     }
 
     #[test]
@@ -53,17 +66,26 @@ mod tests {
 
     #[test]
     fn oaicite_is_strong() {
-        assert_eq!(v("Paris is big :contentReference[oaicite:0]{index=0}."), Verdict::AiSignal);
+        assert_eq!(
+            v("Paris is big :contentReference[oaicite:0]{index=0}."),
+            Verdict::AiSignal
+        );
     }
 
     #[test]
     fn utm_chatgpt_is_strong() {
-        assert_eq!(v("see https://example.com/?utm_source=chatgpt.com"), Verdict::AiSignal);
+        assert_eq!(
+            v("see https://example.com/?utm_source=chatgpt.com"),
+            Verdict::AiSignal
+        );
     }
 
     #[test]
     fn french_self_disclosure() {
-        assert_eq!(v("En tant que modèle de langage, je ne peux pas."), Verdict::AiSignal);
+        assert_eq!(
+            v("En tant que modèle de langage, je ne peux pas."),
+            Verdict::AiSignal
+        );
     }
 
     #[test]

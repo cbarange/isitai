@@ -24,7 +24,10 @@ fn main() -> ExitCode {
             "-h" | "--help" => return usage(""),
             path => match std::fs::File::open(path) {
                 Ok(file) => {
-                    let file_opts = Options { declared_mime: mime_from_ext(path), ..opts.clone() };
+                    let file_opts = Options {
+                        declared_mime: mime_from_ext(path),
+                        ..opts.clone()
+                    };
                     let report = check_reader(std::io::BufReader::new(file), &file_opts, &rules);
                     let mut v = serde_json::to_value(report).unwrap();
                     v["path"] = path.into();
@@ -46,7 +49,10 @@ fn main() -> ExitCode {
     let capture = serde_json::to_value(Verdict::CaptureProven).unwrap();
     if error {
         ExitCode::from(2)
-    } else if reports.iter().all(|r| r["verdict"] == no_signal || r["verdict"] == capture) {
+    } else if reports
+        .iter()
+        .all(|r| r["verdict"] == no_signal || r["verdict"] == capture)
+    {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
@@ -56,7 +62,10 @@ fn main() -> ExitCode {
 /// MIME implied by the file extension, compared with the sniffed type to flag polyglots.
 /// Only formats whose sniffed MIME (crate `infer`) matches exactly are listed.
 fn mime_from_ext(path: &str) -> Option<String> {
-    let ext = std::path::Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
+    let ext = std::path::Path::new(path)
+        .extension()?
+        .to_str()?
+        .to_ascii_lowercase();
     let mime = match ext.as_str() {
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",

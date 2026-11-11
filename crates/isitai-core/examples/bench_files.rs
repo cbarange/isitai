@@ -20,7 +20,11 @@ fn main() {
             let t = Instant::now();
             let report = check_reader(BufReader::new(File::open(&path).unwrap()), &opts, &rules);
             times.push(t.elapsed().as_secs_f64() * 1e3);
-            verdict = serde_json::to_value(report.verdict).unwrap().as_str().unwrap().to_string();
+            verdict = serde_json::to_value(report.verdict)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string();
         }
         let first = times[0];
         times.sort_by(|a, b| a.partial_cmp(b).unwrap());

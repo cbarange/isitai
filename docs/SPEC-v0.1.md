@@ -31,7 +31,7 @@ Légende :
 | Audio | MP3, WAV ; FLAC 👁 ; M4A 👁 (c2pa-python refuse de le signer) | ✅ par défaut, `ai-proven` vérifié pour MP3 et WAV | 🔜 ID3 `TSSE`/`TXXX`, RIFF `INFO/ISFT`, Vorbis comments (v0.2) ; 👁 ElevenLabs, Suno, Udio | 🔜 AudioSeal (v0.3) | 0 | v0.1 (C2PA), v0.2 |
 | Document | PDF | ✅ feature `pdf`, activée par défaut ; `ai-proven` vérifié sur un PDF signé, et `express-signed.pdf` (Adobe Express) donne `ai-signal` | ✅ XMP non compressé ; 🔜 dictionnaire Info `/Producer`, `/Creator` (v0.2) ; 👁 exports Gamma, Copilot, Canva | — | +0,5 Mo | v0.1 |
 | Document | DOCX, XLSX, PPTX, EPUB | 👁 `c2pa-rs` contient un `zip_io`, mais la doc ne liste pas ces formats : à vérifier | 🔜 `docProps/app.xml` `Application`, `docProps/core.xml` (v0.2) | — | à mesurer | v0.2 |
-| Texte | texte brut, Markdown, HTML | 🔜 feature `c2pa-text` (API amont instable, +0,13 Mo, opt-in) | ✅ règles d'artefacts (`rules/text.toml`) ; 🔜 HTML : texte visible + liens `utm_source` (v0.2) | SynthID-Text exige les clés du fournisseur | 0 | v0.1 |
+| Texte | texte brut, Markdown, HTML | 🔜 feature `c2pa-text` (API amont instable, +0,13 Mo, opt-in) | ✅ règles d'artefacts (`crates/isitai-core/rules/text.toml`) ; 🔜 HTML : texte visible + liens `utm_source` (v0.2) | SynthID-Text exige les clés du fournisseur | 0 | v0.1 |
 
 Règle : un format ne passe en ✅ qu'avec au moins une fixture positive et une négative dans le corpus.
 
@@ -137,7 +137,7 @@ Règles de verdict, appliquées dans l'ordre :
 - **Piège** : U+200D (ZWJ) est légitime dans les emojis composés. On l'ignore entre deux emojis.
 - **Piège** : U+202F et U+00A0 sont de la typographie française normale (`« »`, `:`, `?`). On ne s'en sert jamais comme signal.
 - **Piège** : le tiret cadratin et les tournures « IA » ne sont pas des preuves. On les exclut de la v0.1.
-- Les motifs vivent dans un fichier `rules/*.toml` versionné, comme la liste de Mailchecker, pour qu'une contribution n'ait pas besoin de toucher au code.
+- Les motifs vivent dans un fichier `crates/isitai-core/rules/*.toml` versionné, comme la liste de Mailchecker, pour qu'une contribution n'ait pas besoin de toucher au code.
 
 ## Architecture
 

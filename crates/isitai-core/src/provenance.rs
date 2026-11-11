@@ -22,13 +22,17 @@ pub fn read<R: Read + Seek + Send>(
     if let Some(pem) = anchors_pem {
         settings["trust"] = json!({ "trust_anchors": pem });
     }
-    let ctx = Context::new().with_settings(settings.to_string().as_str()).map_err(|e| e.to_string())?;
+    let ctx = Context::new()
+        .with_settings(settings.to_string().as_str())
+        .map_err(|e| e.to_string())?;
 
     let reader = match Reader::from_context(ctx).with_stream(mime, &mut *input) {
         Ok(r) => r,
         Err(c2pa::Error::JumbfNotFound | c2pa::Error::ProvenanceMissing) => return Ok(None),
         // Must stay visible: a MIME name c2pa does not know looks exactly like "no manifest".
-        Err(c2pa::Error::UnsupportedType) => return Err(format!("unsupported type for C2PA: {mime}")),
+        Err(c2pa::Error::UnsupportedType) => {
+            return Err(format!("unsupported type for C2PA: {mime}"))
+        }
         Err(e) => return Err(e.to_string()),
     };
 
@@ -53,19 +57,32 @@ pub fn read<R: Read + Seek + Send>(
         .or_else(|| manifest["claim_generator"].as_str())
         .map(str::to_string);
 
-    let mut out = Provenance { evidence: Vec::new(), generator, warnings: Vec::new() };
+    let mut out = Provenance {
+        evidence: Vec::new(),
+        generator,
+        warnings: Vec::new(),
+    };
     if state == ValidationState::Valid {
-        out.warnings.push("C2PA manifest is valid but its signer is not in the trust list".into());
+        out.warnings
+            .push("C2PA manifest is valid but its signer is not in the trust list".into());
     }
 
     let mut seen = Vec::new();
     for assertion in manifest["assertions"].as_array().into_iter().flatten() {
-        let is_actions = assertion["label"].as_str().is_some_and(|l| l.starts_with("c2pa.actions"));
+        let is_actions = assertion["label"]
+            .as_str()
+            .is_some_and(|l| l.starts_with("c2pa.actions"));
         if !is_actions {
             continue;
         }
-        for action in assertion["data"]["actions"].as_array().into_iter().flatten() {
-            let Some(dst) = action["digitalSourceType"].as_str() else { continue };
+        for action in assertion["data"]["actions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let Some(dst) = action["digitalSourceType"].as_str() else {
+                continue;
+            };
             let value = dst.rsplit('/').next().unwrap_or(dst).to_string();
             if seen.contains(&value) {
                 continue;
@@ -80,7 +97,9 @@ pub fn read<R: Read + Seek + Send>(
                     "C2PA {} action declares digitalSourceType {value} (manifest {state_name})",
                     action["action"].as_str().unwrap_or("?")
                 ),
-                location: Some(Location::Field { field: format!("{label}/{}", assertion["label"].as_str().unwrap_or("")) }),
+                location: Some(Location::Field {
+                    field: format!("{label}/{}", assertion["label"].as_str().unwrap_or("")),
+                }),
             });
         }
     }

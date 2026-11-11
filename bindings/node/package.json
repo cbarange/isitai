@@ -5,6 +5,12 @@
   "keywords": ["ai-detection", "c2pa", "content-credentials", "iptc", "provenance", "deepfake"],
   "license": "MIT",
   "author": "cbarange",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cbarange/isitai.git",
+    "directory": "bindings/node"
+  },
+  "homepage": "https://github.com/cbarange/isitai#readme",
   "main": "index.js",
   "types": "index.d.ts",
   "files": ["index.js", "index.d.ts", "native.js", "README.md"],
@@ -25,7 +31,7 @@
   },
   "scripts": {
     "build": "napi build --platform --release --js native.js --dts native.d.ts",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.js"
   },
   "devDependencies": {
     "@napi-rs/cli": "3.10.12"

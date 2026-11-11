@@ -2,8 +2,8 @@ use crate::Strength;
 use regex::Regex;
 use serde::Deserialize;
 
-const TEXT_TOML: &str = include_str!("../../../rules/text.toml");
-const METADATA_TOML: &str = include_str!("../../../rules/metadata.toml");
+const TEXT_TOML: &str = include_str!("../rules/text.toml");
+const METADATA_TOML: &str = include_str!("../rules/metadata.toml");
 
 #[derive(Deserialize)]
 struct TextFile {
@@ -84,11 +84,19 @@ impl Rules {
                     s => return Err(format!("{}: unknown strength {s}", r.id)),
                 };
                 let regex = Regex::new(&r.pattern).map_err(|e| format!("{}: {e}", r.id))?;
-                Ok(TextRule { id: r.id, strength, detail: r.detail, regex })
+                Ok(TextRule {
+                    id: r.id,
+                    strength,
+                    detail: r.detail,
+                    regex,
+                })
             })
             .collect::<Result<Vec<_>, String>>()?;
         Ok(Rules {
-            version: format!("{:016x}", fnv1a(text_toml.as_bytes()) ^ fnv1a(metadata_toml.as_bytes())),
+            version: format!(
+                "{:016x}",
+                fnv1a(text_toml.as_bytes()) ^ fnv1a(metadata_toml.as_bytes())
+            ),
             text,
             dst: m.digital_source_type,
             png_keys: m.png_key,
@@ -98,5 +106,7 @@ impl Rules {
 }
 
 fn fnv1a(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf29ce484222325, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3))
+    bytes.iter().fold(0xcbf29ce484222325, |h, b| {
+        (h ^ *b as u64).wrapping_mul(0x100000001b3)
+    })
 }

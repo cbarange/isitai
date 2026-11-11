@@ -61,7 +61,9 @@ fn scan_window(window: &[u8], rules: &Rules, out: &mut Vec<Evidence>) {
                 strength,
                 origin,
                 detail: format!("unsigned XMP DigitalSourceType = {value}"),
-                location: Some(Location::Field { field: "Iptc4xmpExt:DigitalSourceType".into() }),
+                location: Some(Location::Field {
+                    field: "Iptc4xmpExt:DigitalSourceType".into(),
+                }),
             });
         }
     }
@@ -87,6 +89,8 @@ mod tests {
     #[test]
     fn ignores_uri_outside_xmp_packet() {
         let data = b"cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia".to_vec();
-        assert!(scan(&mut Cursor::new(data), &Rules::embedded()).unwrap().is_empty());
+        assert!(scan(&mut Cursor::new(data), &Rules::embedded())
+            .unwrap()
+            .is_empty());
     }
 }

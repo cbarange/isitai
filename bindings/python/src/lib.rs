@@ -5,7 +5,10 @@ use isitai::{check_bytes, check_path, check_text, Options, Rules};
 use pyo3::prelude::*;
 
 fn options(trust_anchors_pem: Option<String>, declared_mime: Option<String>) -> Options {
-    Options { trust_anchors_pem, declared_mime }
+    Options {
+        trust_anchors_pem,
+        declared_mime,
+    }
 }
 
 #[pyfunction]

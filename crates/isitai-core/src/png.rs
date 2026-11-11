@@ -7,7 +7,10 @@ const MAX_TEXT_CHUNK: u32 = 16 * 1024 * 1024;
 
 /// Walks PNG chunks with seeks, reading only text chunks, and reports keywords
 /// written by local generators.
-pub fn scan<R: Read + Seek>(input: &mut R, rules: &Rules) -> io::Result<(Vec<Evidence>, Option<String>)> {
+pub fn scan<R: Read + Seek>(
+    input: &mut R,
+    rules: &Rules,
+) -> io::Result<(Vec<Evidence>, Option<String>)> {
     let mut out = Vec::new();
     let mut generator = None;
     input.seek(SeekFrom::Start(0))?;
@@ -43,12 +46,18 @@ pub fn scan<R: Read + Seek>(input: &mut R, rules: &Rules) -> io::Result<(Vec<Evi
                 strength: Strength::Strong,
                 origin: Origin::Ai,
                 detail: format!("PNG text chunk `{}` written by {}", k.key, k.generator),
-                location: Some(Location::Field { field: format!("{}:{}", String::from_utf8_lossy(&kind), k.key) }),
+                location: Some(Location::Field {
+                    field: format!("{}:{}", String::from_utf8_lossy(&kind), k.key),
+                }),
             });
         }
         if key == "Software" && &kind == b"tEXt" {
             let value = String::from_utf8_lossy(data.get(key_end + 1..).unwrap_or_default());
-            if let Some(s) = rules.png_software.iter().find(|s| value.contains(&s.contains)) {
+            if let Some(s) = rules
+                .png_software
+                .iter()
+                .find(|s| value.contains(&s.contains))
+            {
                 generator.get_or_insert_with(|| s.generator.clone());
                 out.push(Evidence {
                     id: "png.software".into(),
@@ -56,7 +65,9 @@ pub fn scan<R: Read + Seek>(input: &mut R, rules: &Rules) -> io::Result<(Vec<Evi
                     strength: Strength::Strong,
                     origin: Origin::Ai,
                     detail: format!("PNG Software is {}", s.generator),
-                    location: Some(Location::Field { field: "tEXt:Software".into() }),
+                    location: Some(Location::Field {
+                        field: "tEXt:Software".into(),
+                    }),
                 });
             }
         }
@@ -100,10 +111,20 @@ mod tests {
 
     #[test]
     fn plain_png_and_truncated_png_are_quiet() {
-        let plain = png(&[chunk(b"IHDR", &[0; 13]), chunk(b"tEXt", b"Comment\0holiday"), chunk(b"IEND", &[])]);
-        assert!(scan(&mut Cursor::new(plain), &Rules::embedded()).unwrap().0.is_empty());
+        let plain = png(&[
+            chunk(b"IHDR", &[0; 13]),
+            chunk(b"tEXt", b"Comment\0holiday"),
+            chunk(b"IEND", &[]),
+        ]);
+        assert!(scan(&mut Cursor::new(plain), &Rules::embedded())
+            .unwrap()
+            .0
+            .is_empty());
         let mut truncated = png(&[chunk(b"IHDR", &[0; 13])]);
         truncated.extend_from_slice(&[0, 0, 0, 50, b't', b'E', b'X', b't', b'p']);
-        assert!(scan(&mut Cursor::new(truncated), &Rules::embedded()).unwrap().0.is_empty());
+        assert!(scan(&mut Cursor::new(truncated), &Rules::embedded())
+            .unwrap()
+            .0
+            .is_empty());
     }
 }

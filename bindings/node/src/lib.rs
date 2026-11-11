@@ -6,7 +6,10 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 fn options(trust_anchors_pem: Option<String>, declared_mime: Option<String>) -> Options {
-    Options { trust_anchors_pem, declared_mime }
+    Options {
+        trust_anchors_pem,
+        declared_mime,
+    }
 }
 
 #[napi]
@@ -16,8 +19,17 @@ pub fn check_text_json(text: String) -> String {
 
 /// Synchronous: meant for in-memory uploads. Use `checkFileJson` for files on disk.
 #[napi]
-pub fn check_buffer_json(data: Buffer, trust_anchors_pem: Option<String>, declared_mime: Option<String>) -> String {
-    check_bytes(&data, &options(trust_anchors_pem, declared_mime), Rules::shared()).to_json()
+pub fn check_buffer_json(
+    data: Buffer,
+    trust_anchors_pem: Option<String>,
+    declared_mime: Option<String>,
+) -> String {
+    check_bytes(
+        &data,
+        &options(trust_anchors_pem, declared_mime),
+        Rules::shared(),
+    )
+    .to_json()
 }
 
 pub struct CheckFileTask {
@@ -30,9 +42,13 @@ impl Task for CheckFileTask {
     type JsValue = String;
 
     fn compute(&mut self) -> Result<Self::Output> {
-        check_path(std::path::Path::new(&self.path), &self.opts, Rules::shared())
-            .map(|r| r.to_json())
-            .map_err(|e| Error::from_reason(format!("{}: {e}", self.path)))
+        check_path(
+            std::path::Path::new(&self.path),
+            &self.opts,
+            Rules::shared(),
+        )
+        .map(|r| r.to_json())
+        .map_err(|e| Error::from_reason(format!("{}: {e}", self.path)))
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
@@ -47,5 +63,8 @@ pub fn check_file_json(
     trust_anchors_pem: Option<String>,
     declared_mime: Option<String>,
 ) -> AsyncTask<CheckFileTask> {
-    AsyncTask::new(CheckFileTask { path, opts: options(trust_anchors_pem, declared_mime) })
+    AsyncTask::new(CheckFileTask {
+        path,
+        opts: options(trust_anchors_pem, declared_mime),
+    })
 }

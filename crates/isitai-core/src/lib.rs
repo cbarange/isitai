@@ -52,8 +52,14 @@ pub enum Origin {
 pub enum Location {
     /// First match in a text. `start` and `end` are **UTF-8 byte offsets**, not
     /// JS/Python string indices; use `text` rather than slicing the input.
-    Span { start: usize, end: usize, text: String },
-    Field { field: String },
+    Span {
+        start: usize,
+        end: usize,
+        text: String,
+    },
+    Field {
+        field: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -89,7 +95,11 @@ impl Report {
 }
 
 /// Checks a file by path, streaming it. Used by the bindings.
-pub fn check_path(path: &std::path::Path, opts: &Options, rules: &Rules) -> std::io::Result<Report> {
+pub fn check_path(
+    path: &std::path::Path,
+    opts: &Options,
+    rules: &Rules,
+) -> std::io::Result<Report> {
     let file = std::fs::File::open(path)?;
     Ok(check_reader(std::io::BufReader::new(file), opts, rules))
 }
@@ -131,7 +141,13 @@ pub fn check_reader<R: Read + Seek + Send>(mut input: R, opts: &Options, rules: 
     let mut head = Vec::with_capacity(SNIFF_LEN);
     if let Err(e) = (&mut input).take(SNIFF_LEN as u64).read_to_end(&mut head) {
         warnings.push(format!("read: {e}"));
-        return finish("application/octet-stream".into(), None, Vec::new(), warnings, rules);
+        return finish(
+            "application/octet-stream".into(),
+            None,
+            Vec::new(),
+            warnings,
+            rules,
+        );
     }
     let sniffed = normalize_mime(infer::get(&head).map(|t| t.mime_type()), &head);
 
@@ -140,13 +156,21 @@ pub fn check_reader<R: Read + Seek + Send>(mut input: R, opts: &Options, rules: 
         let read = (&mut input).take(MAX_TEXT_BYTES).read_to_end(&mut all);
         return match (read, String::from_utf8(all)) {
             (Ok(_), Ok(s)) => check_text(&s, rules),
-            _ => finish("application/octet-stream".into(), None, Vec::new(), warnings, rules),
+            _ => finish(
+                "application/octet-stream".into(),
+                None,
+                Vec::new(),
+                warnings,
+                rules,
+            ),
         };
     };
 
     if let Some(declared) = &opts.declared_mime {
         if !declared.eq_ignore_ascii_case(&mime) {
-            warnings.push(format!("declared type {declared} differs from content type {mime}"));
+            warnings.push(format!(
+                "declared type {declared} differs from content type {mime}"
+            ));
         }
     }
 
@@ -203,20 +227,24 @@ fn finish(
     warnings: Vec<String>,
     rules: &Rules,
 ) -> Report {
-    evidence.sort_by(|a, b| b.strength.cmp(&a.strength));
+    evidence.sort_by_key(|e| std::cmp::Reverse(e.strength));
     Report {
         verdict: verdict(&evidence),
         media,
         generator,
         evidence,
         warnings,
-        version: Version { lib: env!("CARGO_PKG_VERSION"), rules: rules.version.clone() },
+        version: Version {
+            lib: env!("CARGO_PKG_VERSION"),
+            rules: rules.version.clone(),
+        },
     }
 }
 
 /// Spec v0.1 verdict rules, applied in order.
 pub fn verdict(evidence: &[Evidence]) -> Verdict {
-    let has = |o: Origin, min: Strength| evidence.iter().any(|e| e.origin == o && e.strength >= min);
+    let has =
+        |o: Origin, min: Strength| evidence.iter().any(|e| e.origin == o && e.strength >= min);
     let ai_any = has(Origin::Ai, Strength::Weak);
     let cap_any = has(Origin::Capture, Strength::Weak);
 

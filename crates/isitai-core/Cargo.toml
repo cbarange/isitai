@@ -3,6 +3,11 @@ name = "isitai"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Local, offline check for proof or signals that a text or file was made by AI (C2PA, IPTC, generator metadata)."
+repository = "https://github.com/cbarange/isitai"
+readme = "../../README.md"
+keywords = ["ai-detection", "c2pa", "provenance", "iptc", "deepfake"]
+categories = ["multimedia", "text-processing"]
 
 [features]
 # PDF costs +0.5 MB (measured in bench/RESULTS.md), so it is on by default.

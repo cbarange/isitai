@@ -1,0 +1,121 @@
+# Tests on every push to main and every pull request.
+# Security (public repo): no secret is used here, the token is read-only, and
+# `pull_request` (never `pull_request_target`) runs fork code without secrets.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --exclude isitai-node --exclude isitai-python -- -D warnings
+      - run: cargo test --workspace --exclude isitai-node --exclude isitai-python
+      - run: python3 scripts/check_versions.py
+
+  bindings:
+    name: Bindings (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Node binding
+        working-directory: bindings/node
+        shell: bash
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          npm test
+      - name: Python binding
+        working-directory: bindings/python
+        shell: bash
+        run: |
+          python -m venv .venv
+          if [ -f .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe; else PY=.venv/bin/python; fi
+          "$PY" -m pip install --quiet maturin==1.16.0
+          "$PY" -m maturin build --release --out dist
+          "$PY" -m pip install --quiet --pre --no-index --find-links dist isitai
+          "$PY" -m unittest discover -s tests -v
+
+  cross-language:
+    name: CLI = Node = Python
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Build the three front ends
+        run: |
+          cargo build --release -p isitai-cli
+          (cd bindings/node && npm ci --ignore-scripts && npm run build)
+          python -m venv .venv
+          .venv/bin/pip install --quiet maturin==1.16.0 c2pa-python==0.38.2
+          (cd bindings/python && ../../.venv/bin/maturin build --release --out dist)
+          .venv/bin/pip install --quiet --pre --no-index --find-links bindings/python/dist isitai
+      - name: Fetch c2pa-rs fixtures and build the signed corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bench/fetch_fixtures.sh "$RUNNER_TEMP/c2pa"
+          .venv/bin/python -I bench/corpus/make_signed.py "$RUNNER_TEMP/c2pa/fixtures" "$RUNNER_TEMP/c2pa/certs" "$RUNNER_TEMP/signed"
+      - name: Diff the reports
+        run: |
+          python3 -I bench/crosslang/diff.py target/release/isitai bindings/node .venv/bin/python \
+            "$RUNNER_TEMP/c2pa/fixtures/test_cert_root_bundle.pem" "$RUNNER_TEMP/c2pa/fixtures" "$RUNNER_TEMP/signed"
