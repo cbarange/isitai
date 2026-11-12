@@ -105,8 +105,8 @@ Empiler n'apporte rien hors distribution : la pile sans modèle hérite des faux
 
 | Détecteur | Humains accusés au seuil 1 % | Au seuil 5 % | Texte IA (`ai-snowman.txt`) |
 |---|---|---|---|
-| Binoculars (`smollm2-135m`) | 1 sur 117 (`fr-printing-press`) | 3 sur 117 (2 français, 1 portugais) | non détecté |
-| Fast-DetectGPT (`neo125`) | 2 sur 117 (`fr-lighthouse`, `pt-moon`) | 10 sur 117 (4 français, 2 espagnols, 2 portugais, 1 anglais, 1 japonais) | détecté |
+| Binoculars (`smollm2-135m`) | 1 sur 117 (`fr-volcano`) | 3 sur 117 (2 français, 1 portugais) | non détecté |
+| Fast-DetectGPT (`neo125`) | 2 sur 117 (`fr-snowman`, `pt-snowman`) | 10 sur 117 (4 français, 2 espagnols, 2 portugais, 1 anglais, 1 japonais) | détecté |
 
 - Globalement, le taux de faux positifs reste proche de la cible : 0,9 % et 1,7 % au seuil de 1 %.
 - **Par langue, le français est le plus touché** : 1 texte sur 10 pour chaque détecteur au seuil de 1 %, et 4 sur 10 pour Fast-DetectGPT au seuil de 5 %. Avec 10 textes par langue, ce chiffre est très incertain, mais il dépasse le critère de 2 % proposé plus bas.
