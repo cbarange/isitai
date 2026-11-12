@@ -77,13 +77,13 @@ fn read_anchors(path: Option<String>) -> Result<String, String> {
     Ok(pem)
 }
 
-/// Opens a regular file. A directory opens without error on Unix, so it is refused here.
+/// Opens a regular file. A directory opens without error on Unix and fails with
+/// "Access is denied" on Windows, so it is refused first, with one message everywhere.
 fn open_file(path: &str) -> std::io::Result<std::fs::File> {
-    let file = std::fs::File::open(path)?;
-    if file.metadata()?.is_dir() {
+    if std::fs::metadata(path)?.is_dir() {
         return Err(std::io::Error::other("is a directory"));
     }
-    Ok(file)
+    std::fs::File::open(path)
 }
 
 /// MIME implied by the file extension, compared with the sniffed type to flag polyglots.
