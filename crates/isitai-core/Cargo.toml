@@ -8,6 +8,9 @@ repository = "https://github.com/cbarange/isitai"
 readme = "../../README.md"
 keywords = ["ai-detection", "c2pa", "provenance", "iptc", "deepfake"]
 categories = ["multimedia", "text-processing"]
+# The parity test of the light score reads files of the repository (bench/golden/raw):
+# it cannot run from the published crate, so it is not packaged.
+exclude = ["tests/"]
 
 [features]
 # PDF costs +0.5 MB (measured in bench/RESULTS.md), so it is on by default.

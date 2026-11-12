@@ -131,10 +131,61 @@ test('checkStream rejects what is not a stream of bytes', async () => {
 test('text in Windows-1252 and UTF-16 is decoded', () => {
   const latin1 = check(Buffer.from('Très bien :contentReference[oaicite:0]{index=0}', 'latin1'));
   assert.strictEqual(latin1.verdict, 'ai-signal');
-  assert.deepStrictEqual(latin1.warnings, ['text decoded as Windows-1252']);
+  assert.strictEqual(latin1.warnings[0], 'text decoded as Windows-1252');
   const utf16 = check(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Très bien cite turn0search1', 'utf16le')]));
   assert.strictEqual(utf16.verdict, 'ai-signal');
-  assert.deepStrictEqual(utf16.warnings, ['text decoded as UTF-16LE']);
+  assert.strictEqual(utf16.warnings[0], 'text decoded as UTF-16LE');
+  // With the score off, the encoding is the only warning.
+  const plain = check(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Très bien cite turn0search1', 'utf16le')]), { score: false });
+  assert.deepStrictEqual(plain.warnings, ['text decoded as UTF-16LE']);
+  assert.strictEqual(plain.coefficient, undefined);
+});
+
+const TEXT_DIR = path.join(__dirname, '..', '..', '..', 'bench', 'crosslang', 'text');
+const EN_PROSE = fs.readFileSync(path.join(TEXT_DIR, 'en_prose.txt'), 'utf8');
+const FR_PROSE = fs.readFileSync(path.join(TEXT_DIR, 'fr_prose.txt'), 'utf8');
+
+test('an English text gets a likelihood ratio, not a probability', async () => {
+  const r = checkText(EN_PROSE);
+  const c = r.coefficient;
+  assert.ok(['no-signal', 'ai-likely'].includes(r.verdict));
+  assert.ok(c.lr > 0 && c.lr_interval[0] <= c.lr && c.lr <= c.lr_interval[1]);
+  assert.strictEqual(c.coverage, 0.9);
+  assert.match(c.calibration_id, /^text-light-v1\/en\//);
+  assert.strictEqual(c.prevalence_used, null);
+  assert.strictEqual(c.posterior, null);
+  assert.ok(r.notes.includes('language detected: en'));
+  // A plain text file gets the same report as the string.
+  assert.deepStrictEqual(check(Buffer.from(EN_PROSE)), r);
+  assert.deepStrictEqual(await checkFile(path.join(TEXT_DIR, 'en_prose.txt')), r);
+});
+
+test('the posterior needs a prevalence', () => {
+  const c = checkText(EN_PROSE, { prevalence: 0.5 }).coefficient;
+  assert.strictEqual(c.prevalence_used, 0.5);
+  assert.ok(Math.abs(c.posterior - c.lr / (c.lr + 1)) < 1e-3);
+  for (const bad of [0, 1, -0.2, 1.5, NaN]) {
+    assert.throws(() => checkText(EN_PROSE, { prevalence: bad }), /prevalence/);
+  }
+  assert.throws(() => check(Buffer.from(EN_PROSE), { prevalence: 2 }), /prevalence/);
+});
+
+test('the score abstains, and can be turned off', () => {
+  const short = checkText('Back on Monday. See you.');
+  assert.strictEqual(short.verdict, 'no-signal');
+  assert.strictEqual(short.coefficient.lr, null);
+  assert.strictEqual(short.coefficient.calibration_id, null);
+  assert.match(short.warnings[0], /^score not given: text too short/);
+  const french = checkText(FR_PROSE);
+  assert.strictEqual(french.coefficient.lr, null);
+  assert.match(french.warnings[0], /no calibration table for `fr` text/);
+  const off = checkText(EN_PROSE, { score: false });
+  assert.strictEqual(off.coefficient, undefined);
+  assert.strictEqual(off.warnings, undefined);
+  // Markup is not scored.
+  assert.strictEqual(check(Buffer.from(`<!DOCTYPE html><p>${EN_PROSE}</p>`)).coefficient, undefined);
+  // A proof or a signal always wins over the score.
+  assert.strictEqual(checkText(`${EN_PROSE} :contentReference[oaicite:0]{index=0}`).verdict, 'ai-signal');
 });
 
 test('checkFile rejects a missing file', async () => {

@@ -1,4 +1,37 @@
-export type Verdict = 'ai-proven' | 'capture-proven' | 'ai-signal' | 'inconsistent' | 'no-signal';
+/**
+ * `ai-likely`: no proof and no signal, and the statistical score of the text is above the
+ * 1 % false-positive threshold of its calibration table. An estimate, never a proof.
+ */
+export type Verdict =
+  | 'ai-proven'
+  | 'capture-proven'
+  | 'ai-signal'
+  | 'inconsistent'
+  | 'ai-likely'
+  | 'no-signal';
+
+/**
+ * Statistical score of a plain text (detector `text-light-v1`). Present with every field
+ * `null` when the detector abstained: text too short, or no calibration table for its
+ * language (a warning says which).
+ */
+export interface Coefficient {
+  /**
+   * Likelihood ratio: how much more often this score is seen on AI text than on human
+   * text in the calibration data. Above 1 points to AI, below 1 to human.
+   * It is NOT the probability that the text is AI-made.
+   */
+  lr: number | null;
+  /** Bootstrap interval of `lr`, at the stated `coverage`. */
+  lr_interval: [number, number] | null;
+  coverage: number | null;
+  /** Detector, language and date of the calibration table, e.g. `text-light-v1/en/2026-11-12`. */
+  calibration_id: string | null;
+  /** The `prevalence` option, when given. */
+  prevalence_used: number | null;
+  /** Probability that the text is AI-made under `prevalence_used`; `null` without it. */
+  posterior: number | null;
+}
 
 export interface Evidence {
   id: string;
@@ -26,6 +59,10 @@ export interface Report {
   history?: HistoryEntry[];
   /** What `history` establishes about edits after creation; absent when it establishes nothing. */
   history_summary?: HistorySummary;
+  /** Absent when the score is off or the input is not plain text. */
+  coefficient?: Coefficient;
+  /** What the coefficient was computed on: detected language, words, calibration data. */
+  notes?: string[];
   version: { lib: string; rules: string };
 }
 
@@ -67,10 +104,24 @@ export interface CheckOptions {
   declaredMime?: string;
   /** An unknown value throws. */
   effort?: Effort;
+  /** Statistical score of plain text (`coefficient`). Default: `true`. */
+  score?: boolean;
+  /**
+   * Share of AI text you expect among the texts you check, strictly between 0 and 1
+   * (anything else throws). With it the report gives `posterior`; without it a
+   * likelihood ratio only: the library cannot guess a prevalence.
+   */
+  prevalence?: number;
 }
 
-/** Checks a text string for AI copy-paste artifacts. */
-export function checkText(text: string): Report;
+export type CheckTextOptions = Pick<CheckOptions, 'score' | 'prevalence'>;
+
+/**
+ * Checks a text string: AI copy-paste artifacts, and a statistical score (`coefficient`)
+ * when the text is long enough and its language has a calibration table.
+ * Throws when `prevalence` is not strictly between 0 and 1.
+ */
+export function checkText(text: string, options?: CheckTextOptions): Report;
 /**
  * Checks a file by path, off the event loop. Rejects when the file cannot be read, on an
  * unknown `effort` and on unusable `trustAnchorsPem`.

@@ -1,9 +1,22 @@
 """isitai: find proof or signals that a text or file was made by AI.
 
 Every function returns a dict with the same keys as the Node.js package and the CLI:
-``verdict`` ("ai-proven", "capture-proven", "ai-signal", "inconsistent", "no-signal"),
-``media``, ``generator``, ``evidence``, ``warnings``, ``history``, ``history_summary``,
-``version``.
+``verdict`` ("ai-proven", "capture-proven", "ai-signal", "inconsistent", "ai-likely",
+"no-signal"), ``media``, ``generator``, ``evidence``, ``warnings``, ``history``,
+``history_summary``, ``coefficient``, ``notes``, ``version``.
+
+``coefficient`` is the statistical score of a plain text (detector ``text-light-v1``):
+``{"lr", "lr_interval", "coverage", "calibration_id", "prevalence_used", "posterior"}``.
+``lr`` is a likelihood ratio (how much more often this score is seen on AI text than on
+human text in the calibration data), **not** the probability that the text is AI-made.
+``posterior`` is that probability and stays ``None`` unless you pass ``prevalence``, the
+share of AI text you expect. Every field is ``None`` when the detector abstains: text
+under 150 words, or no calibration table for its language (today: English only); a
+warning says which. The key is absent when ``score=False`` or the input is not plain
+text. ``ai-likely`` means no proof, no signal, and a score above the 1 % false-positive
+threshold of the table: an estimate with a measured error rate, never a proof. Do not
+use it to grade or accuse a person: writers who are not native speakers are known to be
+flagged more often by this kind of detector.
 
 ``history`` (absent when empty) lists the actions of the active C2PA manifest in order,
 at most 64: ``{"action", "digital_source_type"?, "software"?}``. ``digital_source_type``
@@ -38,9 +51,17 @@ DEFAULT_MAX_STREAM_BYTES: int = _isitai.DEFAULT_MAX_STREAM_BYTES
 _READ_SIZE = 1024 * 1024
 
 
-def check_text(text: str) -> Report:
-    """Checks a text string for AI copy-paste artifacts."""
-    return json.loads(_isitai.check_text_json(text))
+def check_text(
+    text: str, *, score: bool = True, prevalence: Optional[float] = None
+) -> Report:
+    """Checks a text string: AI copy-paste artifacts, and the statistical score.
+
+    ``score``: ``False`` turns the statistical score off (no ``coefficient`` key).
+    ``prevalence``: share of AI text you expect among the texts you check, strictly
+    between 0 and 1; anything else raises ``ValueError``. With it the report gives
+    ``coefficient["posterior"]``; without it a likelihood ratio only.
+    """
+    return json.loads(_isitai.check_text_json(text, score, prevalence))
 
 
 def check_file(
@@ -49,6 +70,8 @@ def check_file(
     trust_anchors_pem: Optional[str] = None,
     declared_mime: Optional[str] = None,
     effort: Optional[str] = None,
+    score: bool = True,
+    prevalence: Optional[float] = None,
 ) -> Report:
     """Checks a file by path. The file is streamed, never loaded whole.
 
@@ -66,9 +89,14 @@ def check_file(
     would report. An unknown value raises ``ValueError``.
 
     Text rules also run on the content of text-like files (HTML, XML, SVG, shell script).
+
+    ``score`` and ``prevalence``: as in ``check_text``; they apply to plain text files
+    only (markup is not scored).
     """
     return json.loads(
-        _isitai.check_file_json(os.fspath(path), trust_anchors_pem, declared_mime, effort)
+        _isitai.check_file_json(
+            os.fspath(path), trust_anchors_pem, declared_mime, effort, score, prevalence
+        )
     )
 
 
@@ -78,13 +106,17 @@ def check(
     trust_anchors_pem: Optional[str] = None,
     declared_mime: Optional[str] = None,
     effort: Optional[str] = None,
+    score: bool = True,
+    prevalence: Optional[float] = None,
 ) -> Report:
     """Checks in-memory bytes (an upload). Prefer ``check_file`` for files on disk.
 
     Same keyword arguments as ``check_file``.
     """
     return json.loads(
-        _isitai.check_bytes_json(bytes(data), trust_anchors_pem, declared_mime, effort)
+        _isitai.check_bytes_json(
+            bytes(data), trust_anchors_pem, declared_mime, effort, score, prevalence
+        )
     )
 
 
@@ -95,6 +127,8 @@ def check_stream(
     trust_anchors_pem: Optional[str] = None,
     declared_mime: Optional[str] = None,
     effort: Optional[str] = None,
+    score: bool = True,
+    prevalence: Optional[float] = None,
 ) -> Report:
     """Checks a stream that cannot seek: any binary object with ``read(size)``.
 
@@ -134,4 +168,6 @@ def check_stream(
         trust_anchors_pem=trust_anchors_pem,
         declared_mime=declared_mime,
         effort=effort,
+        score=score,
+        prevalence=prevalence,
     )

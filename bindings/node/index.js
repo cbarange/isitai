@@ -3,20 +3,28 @@
 // so Node, Python and the CLI return the same reports.
 const native = require('./native.js');
 
-/** Checks a text string for AI copy-paste artifacts. */
-function checkText(text) {
-  return JSON.parse(native.checkTextJson(String(text)));
+/**
+ * Checks a text string: AI copy-paste artifacts, and a statistical score (`coefficient`)
+ * for plain text long enough in a language with a calibration table.
+ * Throws when `prevalence` is not strictly between 0 and 1.
+ * @param {string} text
+ * @param {{score?: boolean, prevalence?: number}} [options]
+ */
+function checkText(text, options = {}) {
+  return JSON.parse(native.checkTextJson(String(text), options.score, options.prevalence));
 }
 
 /**
  * Checks a file by path, off the event loop. The file is streamed, never loaded whole.
  * Rejects on an unknown `effort` and on `trustAnchorsPem` without a usable certificate.
  * @param {string} path
- * @param {{trustAnchorsPem?: string, declaredMime?: string, effort?: 'fast'|'standard'}} [options]
+ * @param {{trustAnchorsPem?: string, declaredMime?: string, effort?: 'fast'|'standard', score?: boolean, prevalence?: number}} [options]
  */
 async function checkFile(path, options = {}) {
   return JSON.parse(
-    await native.checkFileJson(String(path), options.trustAnchorsPem, options.declaredMime, options.effort),
+    await native.checkFileJson(
+      String(path), options.trustAnchorsPem, options.declaredMime, options.effort, options.score, options.prevalence,
+    ),
   );
 }
 
@@ -24,11 +32,15 @@ async function checkFile(path, options = {}) {
  * Checks in-memory bytes (an upload). Synchronous; prefer checkFile for files on disk.
  * Throws on an unknown `effort` and on `trustAnchorsPem` without a usable certificate.
  * @param {Buffer|Uint8Array} data
- * @param {{trustAnchorsPem?: string, declaredMime?: string, effort?: 'fast'|'standard'}} [options]
+ * @param {{trustAnchorsPem?: string, declaredMime?: string, effort?: 'fast'|'standard', score?: boolean, prevalence?: number}} [options]
  */
 function check(data, options = {}) {
   const buf = Buffer.isBuffer(data) ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  return JSON.parse(native.checkBufferJson(buf, options.trustAnchorsPem, options.declaredMime, options.effort));
+  return JSON.parse(
+    native.checkBufferJson(
+      buf, options.trustAnchorsPem, options.declaredMime, options.effort, options.score, options.prevalence,
+    ),
+  );
 }
 
 /** Default `maxBytes` of `checkStream`: 256 MiB. */
