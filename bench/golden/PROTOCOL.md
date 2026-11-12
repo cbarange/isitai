@@ -33,7 +33,9 @@ n'est publiable.** Pour dire « 1 % de faux positifs », il faut 299 négatifs ;
 
 ## 3. Composition du jeu
 
-Trois classes, 100 fichiers chacune :
+Trois classes. Les tailles ne sont pas égales, et ce n'est pas un défaut : les taux se
+rapportent par classe avec leur intervalle, et c'est le nombre de négatifs qui fixe ce qu'on
+peut affirmer (§2).
 
 | Classe | Contenu | Vérité de terrain |
 |---|---|---|
@@ -130,7 +132,10 @@ Une revendication est refusée si :
 | Analyse de puissance | fait (§2) |
 | Règles anti-fuite | fait (§4), à implémenter dans `build.py` |
 | Protocole d'adjudication | fait (§5), **pas encore appliqué** : les labels actuels viennent de la provenance, pas d'une double lecture |
-| Classe `human` | 100 segments issus de 36 documents de l'auteur |
-| Classe `ai` | 100 textes générés le 2026-11-12, deux générateurs, provenance enregistrée |
-| Classe `mixed` | à construire par insertion à frontière connue |
-| κ de Cohen | non mesuré — c'est la première dette du jeu |
+| Classe `human` | 150 segments issus de 36 documents de l'auteur |
+| Classe `ai` | 100 textes générés le 2026-11-12, deux lots, **un seul générateur** (`deepseek-v4.1-flash`) — la diversité de générateur reste à faire |
+| Classe `mixed` | 100 textes, insertion à frontière connue, offsets dans le manifeste |
+| `degraded` | 120 variantes, cinq transformations déterministes |
+| Reconstruction | identique au bit près, vérifiée deux fois |
+| κ de Cohen | **non mesuré — c'est la première dette du jeu** |
+| Harnais d'évaluation | **absent** : aucun détecteur n'a encore été mesuré sur ce jeu |
