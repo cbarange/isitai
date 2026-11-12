@@ -1,0 +1,16 @@
+stack a-nomodel: 5 components, test=0.990 test_ood=0.892 test_fr=0.637 test_fiction=0.523 test_attack=0.898
+   top weights: stylometry_lr.full +3.52, tfidf_lr.char15-lr +2.22, storyscope_lite.lr +0.54, zippy.zlib-contrast +0.41, isitai_rules +0.00
+stack a-nomodel-nolayout: 5 components, test=0.965 test_ood=0.845 test_fr=0.435 test_fiction=0.333 test_attack=0.881
+   top weights: tfidf_lr.char15-lr +3.33, stylometry_lr.full-nolayout +1.18, storyscope_lite.lr-nolayout +0.25, zippy.zlib-contrast +0.17, isitai_rules +0.00
+stack a-untrained: 4 components, test=0.664 test_ood=0.517 test_fr=0.428 test_fiction=0.447 test_attack=0.576
+   top weights: zippy.brotli-alone +0.54, zippy.zlib-alone +0.36, length_baseline +0.17, isitai_rules +0.00
+stack zeroshot-lm: 17 components, test=0.908 test_ood=0.951 test_fr=0.698 test_fiction=0.641 test_attack=0.746
+   top weights: binoculars_small.smollm2-135m +2.63, gltr_ppl.gpt2-lrr +2.01, intrinsic_dim.phd -1.54, binoculars_small.distilgpt2-obs-gpt2-perf +1.17, fast_detectgpt.distilgpt2 -1.08, fast_detectgpt.neo125 +0.83
+stack c-all: 57 components, test=1.000 test_ood=0.986 test_fr=0.640 test_fiction=0.469 test_attack=0.986
+   top weights: pretrained_classifiers.modernbert-raid-mage +1.01, pretrained_classifiers.modernbert-raid-mage-onnx +1.01, pretrained_classifiers.modernbert-raid-mage-onnx-int8 +1.00, pretrained_classifiers.gpttrace-ettin150 +0.94, pretrained_classifiers.desklib +0.56, stylometry_lr.lang-indep +0.54
+stack c-all-clean: 52 components, test=0.994 test_ood=0.950 test_fr=0.585 test_fiction=0.487 test_attack=0.937
+   top weights: stylometry_lr.lang-indep +1.89, stylometry_lr.full +1.74, tfidf_lr.bpe24-chunk-lr +0.90, pretrained_classifiers.roberta-openai +0.88, binoculars_small.smollm2-135m +0.87, fast_detectgpt.neo125 +0.85
+stack b-nomodel+lm: 6 components, test=0.990 test_ood=0.931 test_fr=0.693 test_fiction=0.566 test_attack=0.912
+   top weights: stylometry_lr.full +3.46, tfidf_lr.char15-lr +2.13, binoculars_small.smollm2-135m +1.12, storyscope_lite.lr +0.44, zippy.zlib-contrast +0.40, isitai_rules +0.00
+stack b-nolayout+lm: 6 components, test=0.973 test_ood=0.910 test_fr=0.578 test_fiction=0.416 test_attack=0.897
+   top weights: tfidf_lr.char15-lr +3.25, binoculars_small.smollm2-135m +1.40, stylometry_lr.full-nolayout +1.24, storyscope_lite.lr-nolayout +0.22, zippy.zlib-contrast +0.21, isitai_rules +0.00
