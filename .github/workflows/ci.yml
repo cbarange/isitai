@@ -274,3 +274,25 @@ jobs:
           maturin build --release --out dist
           python -m pip install --quiet --pre --no-index --find-links dist isitai
           python -m unittest discover -s tests -v
+
+  rhetoric-bench:
+    name: Couche rhétorique sur le jeu doré
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Construire le jeu doré
+        run: python3 bench/golden/build.py
+      - name: Construire la CLI
+        run: cargo build --release -p isitai-cli
+      - name: Mesurer la couche
+        # Décrit un comportement par classe. Ne prétend pas mesurer une précision.
+        run: python3 bench/rhetoric/eval.py

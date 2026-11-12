@@ -2,7 +2,7 @@ export type Verdict = 'ai-proven' | 'capture-proven' | 'ai-signal' | 'inconsiste
 
 export interface Evidence {
   id: string;
-  layer: 'provenance' | 'metadata' | 'artifact';
+  layer: 'provenance' | 'metadata' | 'artifact' | 'rhetoric';
   strength: 'weak' | 'strong' | 'proof';
   origin: 'ai' | 'capture';
   detail: string;
