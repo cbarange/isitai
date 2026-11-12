@@ -46,7 +46,6 @@
   document.querySelectorAll('[data-i18n-placeholder]').forEach(function (n) {
     n.placeholder = t(n.getAttribute('data-i18n-placeholder'));
   });
-  document.getElementById('privacy').textContent = t(engine.isStub ? 'privacy.stub' : 'privacy.real');
 
   // ---- rendering --------------------------------------------------------
   var body = document.getElementById('result-body');
@@ -128,7 +127,7 @@
     var known = VERDICTS.indexOf(report.verdict) !== -1;
     body.textContent = '';
 
-    if (note) body.appendChild(el('p', 'note' + (engine.isStub ? ' note-stub' : ''), note));
+    if (note) body.appendChild(el('p', 'note', note));
 
     var card = el('div', 'verdict v-' + (known ? report.verdict : 'unknown'));
     card.appendChild(el('p', 'verdict-kicker', t('result.verdict')));
@@ -190,20 +189,26 @@
 
   function renderError(err) {
     body.textContent = '';
-    body.appendChild(el('p', 'note note-error', t('result.error', { message: (err && err.message) || String(err) })));
+    // Without an engine there is nothing to show: never a made-up report.
+    body.appendChild(el('p', 'note note-error',
+      engineDown || t('result.error', { message: (err && err.message) || String(err) })));
     renderLegend(null);
   }
 
-  // ---- running a check --------------------------------------------------
-  var last = null; // { input, name }
+  // ---- engine load failure ----------------------------------------------
+  var engineDown = null; // message shown instead of a report when the engine did not load
+  engine.ready.catch(function (err) {
+    engineDown = location.protocol === 'file:'
+      ? t('engine.down.file')
+      : t('engine.down', { message: (err && err.message) || String(err) });
+    document.getElementById('engine-down-body').textContent = engineDown;
+    document.getElementById('engine-down').hidden = false;
+  });
 
+  // ---- running a check --------------------------------------------------
   async function run(input, name, focus) {
-    last = { input: input, name: name };
-    var note;
-    if (engine.isStub) note = name ? t('result.sample.ignored', { name: name }) : t('result.sample');
-    else note = t('result.input', { name: name });
     try {
-      render(await engine.check(input), note);
+      render(await engine.check(input), t('result.input', { name: name }));
     } catch (err) {
       renderError(err);
     }
@@ -247,30 +252,5 @@
     run(value, t('result.input.text', { n: Array.from(value).length }), true);
   });
 
-  // ---- stub mode: banner and sample picker -------------------------------
-  if (engine.isStub) {
-    document.getElementById('stub-banner').hidden = false;
-    var box = document.getElementById('samples');
-    var options = document.getElementById('sample-options');
-    box.hidden = false;
-    VERDICTS.forEach(function (v) {
-      var label = el('label', 'sample v-' + v);
-      var radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'sample';
-      radio.value = v;
-      radio.checked = v === engine.sample;
-      radio.addEventListener('change', function () {
-        engine.sample = v;
-        run(last ? last.input : null, last ? last.name : '', false);
-      });
-      label.appendChild(radio);
-      label.appendChild(el('span', 'swatch'));
-      label.appendChild(el('code', null, v));
-      options.appendChild(label);
-    });
-    run(null, '', false);
-  } else {
-    renderLegend(null);
-  }
+  renderLegend(null);
 })();

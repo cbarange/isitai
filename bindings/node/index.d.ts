@@ -52,8 +52,9 @@ export type Effort = 'fast' | 'standard';
 
 export interface CheckOptions {
   /**
-   * PEM bundle of trusted C2PA roots. Without it, a valid manifest gives at most `ai-signal`.
-   * A bundle without a usable certificate throws.
+   * PEM bundle of trusted C2PA roots. It replaces the default, which is the official C2PA trust
+   * list embedded in the library. A valid manifest whose signer does not chain to the roots in
+   * use gives at most `ai-signal`. A bundle without a usable certificate throws.
    */
   trustAnchorsPem?: string;
   /** MIME type claimed by the caller, compared with the sniffed type. */

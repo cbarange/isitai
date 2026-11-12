@@ -2,6 +2,8 @@
 .env
 .env.*
 *.pem
+# Public C2PA trust list, embedded in the core crate (not a secret)
+!crates/isitai-core/trust/C2PA-TRUST-LIST.pem
 .npmrc*
 
 # Build outputs
@@ -24,3 +26,6 @@ __pycache__/
 *.dylib
 # Copied from the root README at build time
 bindings/*/README.md
+
+# WebAssembly engine of the demo page, built by site/build.sh
+site/pkg/

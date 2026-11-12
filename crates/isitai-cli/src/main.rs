@@ -1,5 +1,6 @@
 //! Usage: isitai [--anchors roots.pem] [--effort fast|standard] [--text "string"] [FILE...]
-//! Options apply to the files that follow them.
+//! Options apply to the files that follow them. `--anchors` replaces the embedded
+//! C2PA trust list.
 //! Prints one JSON report per input. Exit: 0 nothing found (which does not mean
 //! human-made), 1 AI signal or proof, 2 error.
 
@@ -116,6 +117,7 @@ fn usage(msg: &str) -> ExitCode {
         "usage: isitai [--anchors roots.pem] [--effort fast|standard] [--text \"string\"] [FILE...]"
     );
     eprintln!("Options apply to the files that follow them.");
+    eprintln!("--anchors replaces the embedded official C2PA trust list.");
     eprintln!("Exit code: 0 nothing found, 1 AI signal or proof, 2 error.");
     eprintln!("Exit code 0 does not mean human-made: it means no proof and no signal was found.");
     ExitCode::from(2)

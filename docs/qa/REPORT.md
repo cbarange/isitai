@@ -37,6 +37,8 @@ python3 -I bench/corpus/check_expected.py $B $S --anchors $A          # « 13 fi
 python3 -I bench/corpus/check_expected.py $B $V --anchors $A          # « 12 files, 4 not ok »
 ```
 
+Depuis que la liste de confiance C2PA officielle est embarquée, le même corpus signé vérifie aussi que le certificat de TEST de c2pa-rs n'est pas de confiance par défaut. Sans `--anchors`, `check_expected.py $B $S` doit annoncer « 13 files, 13 not ok », tous en `VERDICT` : `ai-signal` au lieu de `ai-proven`, `no-signal` au lieu de `capture-proven`, avec l'avertissement « signer is not in the trust list ». Avec `--anchors $A`, « 13 files, 0 not ok » (relevé du 2026-11-12).
+
 `make_synthetic.py` est déterministe (mêmes sha256 sur deux générations). Les étiquettes ont été fixées avant la première exécution et jamais ajustées.
 
 ## Ce qui a été testé

@@ -12,10 +12,10 @@ window.ISITAI_STRINGS = {
     'head.tagline': 'Proof or signals that a text or a file was made by AI. Never a guess.',
     'head.lede': 'isitai reads what a file says about itself: signed Content Credentials (C2PA), IPTC metadata, marks left by image generators, and copy-paste residue in text. It reports what it found and how strong it is.',
 
-    'stub.banner.title': 'Demo engine',
-    'stub.banner.body': 'The in-browser engine is not built yet. This page shows sample reports only: whatever you drop or paste is not read and not analysed.',
-    'privacy.stub': 'Nothing leaves this page: it makes no network request.',
-    'privacy.real': 'Runs entirely in your browser. Your file never leaves your device.',
+    'engine.down.title': 'The engine did not load',
+    'engine.down': 'Nothing can be checked: the in-browser engine could not be loaded ({message}). Reload the page.',
+    'engine.down.file': 'Nothing can be checked: this page was opened from disk (file://), and a browser cannot load the in-browser engine that way. Serve the folder over http(s), for example with “python3 -m http.server”.',
+    'privacy': 'Runs entirely in your browser. Your file never leaves your device.',
 
     'caveat.title': 'Read this before you trust a result',
     'caveat.nosignal': '“no-signal” does not mean human-made. It means this tool found no mark. Most AI content carries none.',
@@ -32,12 +32,8 @@ window.ISITAI_STRINGS = {
     'input.text.button': 'Check text',
     'input.text.empty': 'Paste some text first.',
 
-    'samples.title': 'Sample report to show',
-
     'result.title': 'Report',
     'result.empty': 'No report yet. Drop a file or paste a text.',
-    'result.sample': 'Sample report.',
-    'result.sample.ignored': 'Sample report. Your input ({name}) was not analysed.',
     'result.input': 'Input: {name}',
     'result.input.text': 'pasted text, {n} characters',
     'result.error': 'The check failed: {message}',

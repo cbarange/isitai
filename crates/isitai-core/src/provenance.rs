@@ -12,15 +12,18 @@ pub struct Provenance {
     pub history_summary: Option<HistorySummary>,
 }
 
+/// Official C2PA trust list, used when the caller gives no anchors. Vendored, never
+/// fetched: see `trust/SOURCE.md` for its origin and `scripts/update_trust_list.sh`.
+const C2PA_TRUST_LIST: &str = include_str!("../trust/C2PA-TRUST-LIST.pem");
+
 /// C2PA settings shared by [`read`] and [`validate_trust_anchors`]: no network,
-/// trust checked against `anchors_pem` when given.
+/// trust checked against `anchors_pem` when given, else against [`C2PA_TRUST_LIST`].
+/// One bundle is passed, never both: c2pa adds every bundle it is given to its anchors.
 fn context(anchors_pem: Option<&str>) -> Result<Context, String> {
-    let mut settings = json!({
-        "verify": { "remote_manifest_fetch": false, "ocsp_fetch": false, "verify_trust": true }
+    let settings = json!({
+        "verify": { "remote_manifest_fetch": false, "ocsp_fetch": false, "verify_trust": true },
+        "trust": { "trust_anchors": anchors_pem.unwrap_or(C2PA_TRUST_LIST) }
     });
-    if let Some(pem) = anchors_pem {
-        settings["trust"] = json!({ "trust_anchors": pem });
-    }
     Context::new()
         .with_settings(settings.to_string().as_str())
         .map_err(|e| e.to_string())
@@ -29,6 +32,7 @@ fn context(anchors_pem: Option<&str>) -> Result<Context, String> {
 /// Checks that a PEM bundle can be used as `Options::trust_anchors_pem`: it holds at
 /// least one certificate block and c2pa accepts it. Call it once before checking
 /// files: with an unusable bundle, no C2PA manifest can be read at all.
+/// There is no bundle that trusts nothing: an empty one is refused.
 pub fn validate_trust_anchors(pem: &str) -> Result<(), String> {
     const BEGIN: &str = "-----BEGIN CERTIFICATE-----";
     const END: &str = "-----END CERTIFICATE-----";
@@ -793,6 +797,26 @@ dfVLPyqKmtjenOUMvVQD7waNbetLY7kvUJZCd5eaDghk30/Q1RaNjiP/2RfA/it8
 zGxQnM2hCA==
 -----END CERTIFICATE-----
 ";
+
+    #[test]
+    fn embedded_trust_list_is_usable() {
+        assert_eq!(validate_trust_anchors(C2PA_TRUST_LIST), Ok(()));
+        assert!(context(None).is_ok());
+        // A truncated copy would still load: the list must not be near empty.
+        let blocks = C2PA_TRUST_LIST.matches("-----BEGIN CERTIFICATE-----");
+        assert!(blocks.count() >= 10);
+    }
+
+    #[test]
+    fn given_anchors_replace_the_embedded_list() {
+        let bundles = |anchors_pem| -> Vec<String> {
+            let ctx = context(anchors_pem).unwrap();
+            let anchors = ctx.settings().trust.anchors.clone().unwrap_or_default();
+            anchors.into_iter().map(|a| a.trust_anchors).collect()
+        };
+        assert_eq!(bundles(None), [C2PA_TRUST_LIST]);
+        assert_eq!(bundles(Some(TEST_ROOT)), [TEST_ROOT]);
+    }
 
     #[test]
     fn trust_anchors_must_hold_a_usable_certificate() {

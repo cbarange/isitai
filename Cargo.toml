@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/isitai-core", "crates/isitai-cli", "bindings/python", "bindings/node"]
+members = ["crates/isitai-core", "crates/isitai-cli", "bindings/python", "bindings/node", "bindings/wasm"]
 
 [workspace.package]
 version = "0.1.0-alpha.0"

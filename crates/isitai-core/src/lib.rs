@@ -173,7 +173,9 @@ impl std::str::FromStr for Effort {
 
 #[derive(Debug, Clone, Default)]
 pub struct Options {
-    /// PEM bundle of trusted C2PA roots. Without it, valid manifests are only `strong`.
+    /// PEM bundle of trusted C2PA roots. It **replaces** the default, which is the
+    /// official C2PA trust list embedded in this crate (`trust/SOURCE.md`). A valid
+    /// manifest whose signer does not chain to the roots in use is only `strong`.
     /// Check it once with [`validate_trust_anchors`]: the check functions never fail,
     /// so an unusable bundle only shows as a `c2pa:` warning in each report.
     pub trust_anchors_pem: Option<String>,

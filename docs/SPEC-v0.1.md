@@ -67,6 +67,8 @@ Erreurs (code `2`) : option inconnue commençant par `--`, fichier illisible, do
 
 ### Ancres de confiance
 
+Par défaut, les ancres sont la liste de confiance officielle de la C2PA, embarquée dans le crate (`crates/isitai-core/trust/`, origine dans `SOURCE.md`) : aucune configuration, aucun appel réseau. Un PEM fourni (`--anchors`, `trustAnchorsPem`, `trust_anchors_pem`) **remplace** la liste embarquée, il ne s'y ajoute pas. Il n'existe pas d'option pour ne faire confiance à rien : un PEM vide est refusé.
+
 Un PEM d'ancres inutilisable est une erreur, jamais une perte silencieuse de la lecture C2PA. Le cœur expose `validate_trust_anchors(pem)` : le PEM doit contenir au moins un bloc `CERTIFICATE` et être accepté par `c2pa`. La CLI sort en code `2`, Node lève une `Error`, Python lève `ValueError`. Les fonctions `check*` du cœur restent sans échec.
 
 ### Effort
@@ -129,7 +131,7 @@ Règles de verdict, appliquées dans l'ordre. Une preuve (`proof`) n'est pas ann
 - Manifeste invalide : avertissement « C2PA manifest is invalid: the file changed after signing, or the manifest is broken », pas de `generator`, pas de `history_summary` ; `history` reste listé.
 - Bornes face à un manifeste hostile : `history` garde au plus 64 actions (avertissement au-delà) ; les noms d'action, de type de source et de logiciel sont coupés à 128 caractères.
 - Dans `history`, un `digital_source_type` hérité est celui de la première action de l'ingrédient, et seulement celle-là.
-- **Piège** : n'importe qui peut auto-signer un manifeste. Il faut donc `verify_trust: true` et les trust anchors de la liste de confiance C2PA, embarquée et versionnée. Une signature valide sur un certificat non fiable ne donne que `ai-signal`.
+- **Piège** : n'importe qui peut auto-signer un manifeste. Il faut donc `verify_trust: true` et des trust anchors : la liste de confiance C2PA embarquée, ou le PEM de l'appelant, jamais les deux (`c2pa` additionne les listes qu'il reçoit). Une signature valide sur un certificat non fiable ne donne que `ai-signal`.
 - **Piège** : `remote_manifest_fetch` vaut `true` par défaut. Il faut le forcer à `false` (et laisser `ocsp_fetch: false`), sinon la lib fait des appels réseau.
 
 ### Image, couche métadonnées
@@ -240,13 +242,18 @@ Crates : `c2pa` (sans `openssl` ni `default_http` : pas d'OpenSSL système, pas 
 
 ## Checklist avant 0.1.0
 
-- [ ] **Liste de confiance C2PA embarquée.** Source officielle : `c2pa-org/conformance-public`, fichier `trust-list/C2PA-TRUST-LIST.pem` (licence CC-BY-4.0, attribution dans le README). Synchronisée automatiquement par la C2PA, environ toutes les 1 à 3 semaines (relevé du 2026-11-12). À faire :
-  - embarquer le PEM dans le crate, versionné, avec sa date et son commit source ;
-  - l'utiliser par défaut, avec une option pour le remplacer ;
-  - ajouter un workflow planifié qui ouvre une PR quand la liste change.
-
-  Sans elle, aucun fichier réel (ChatGPT, Firefly…) ne peut atteindre `ai-proven`.
-- [ ] Liste TSA (`C2PA-TSA-TRUST-LIST.pem`) : vérifier si `c2pa-rs` en a besoin pour valider les horodatages.
+- [ ] **Liste de confiance C2PA embarquée.** Source officielle : `c2pa-org/conformance-public`, fichier `trust-list/C2PA-TRUST-LIST.pem` (licence CC-BY-4.0, attribution dans le README). Synchronisée automatiquement par la C2PA, environ toutes les 1 à 3 semaines (relevé du 2026-11-12).
+  - [x] PEM embarqué dans le crate (`crates/isitai-core/trust/`), avec sa date et son commit source (`SOURCE.md`) ; mise à jour par `scripts/update_trust_list.sh`.
+  - [x] Utilisé par défaut ; `trust_anchors_pem` le remplace.
+  - [ ] Ajouter un workflow planifié qui ouvre une PR quand la liste change.
+- [ ] **Liste TSA (`C2PA-TSA-TRUST-LIST.pem`) : nécessaire, pas encore embarquée.** Vérifié avec `c2pa-rs` 0.92.0 (2026-11-12) : pour un claim v2, l'horodatage ne compte que si son autorité remonte à une ancre de type `tsa` ; sinon le certificat de signature est jugé à la date du jour. Une photo Pixel réelle signée sous la liste officielle est `Valid` sans la liste TSA (signataire de confiance, mais `signingCredential.untrusted` sur un ingrédient dont l'horodatage n'est pas reconnu) et `Trusted` avec. À faire : embarquer la liste TSA et la passer dans `trust.anchors` avec `trust_kind: "tsa"`.
+- [ ] **Fichiers signés sous l'ancienne liste « interim »** (contentcredentials.org) : aucun de ses 26 certificats n'est dans la liste officielle. Firefly et Photoshop (2025) restent `Valid`, donc `ai-signal` au mieux. Décider s'il faut une seconde liste.
 - [ ] Corpus réel : au moins un fichier par générateur (ChatGPT, Firefly, Gemini, Midjourney) et des photos d'appareils signées.
 - [ ] Mesurer l'addon Node en profil `size` (9,4 Mo en `release`, limite de 10 Mo).
 - [ ] Valider en CI le build `wasm32-wasip1-threads`.
+- [ ] **Démo navigateur (WebAssembly).**
+  - [x] Le cœur compile pour `wasm32-unknown-unknown` sans modification (`c2pa` 0.92.0, `rust_native_crypto`, `pdf`). Vérifié le 2026-11-12 sous Node : 243 rapports identiques à ceux de la CLI (81 fichiers × 3 jeux d'options, dont `ai-proven` et `capture-proven` avec les racines de test, PDF compris).
+  - [x] `bindings/wasm` (`wasm-bindgen` 0.2.130) : `check_text_json` et `check_bytes_json(bytes, effort?, trust_anchors_pem?)` ; une option invalide lève une `Error`.
+  - [x] `site/build.sh` produit `site/pkg/` (ignoré par git) : 6,5 Mo, 2,3 Mo en gzip (`wasm-opt -Oz` : 6,2 Mo, gzip inchangé, donc non utilisé). `site/engine.js` charge ce module ; la page ne fonctionne pas en `file://` et l'affiche.
+  - [ ] Construire `site/pkg/` en CI (cible `wasm32-unknown-unknown`, `wasm-bindgen-cli` épinglé) et le publier avec la page.
+  - [ ] Réduire la taille (build sans `pdf`) et sortir le contrôle du fil principal (Web Worker) si les gros fichiers bloquent la page.

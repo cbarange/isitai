@@ -1618,6 +1618,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "isitai-wasm"
+version = "0.1.0-alpha.0"
+dependencies = [
+ "isitai",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
