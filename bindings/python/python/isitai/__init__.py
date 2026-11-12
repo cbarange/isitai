@@ -14,18 +14,28 @@ The history is what the manifest declares; it is not evidence and the verdict ig
 
 ``no-signal`` never means "human": it means nothing was found.
 Text spans in ``evidence[].location`` are UTF-8 byte offsets; use ``location["text"]``.
+For a file in another encoding (UTF-16 with a byte order mark, Windows-1252) they are
+offsets in the decoded text, and a warning names the encoding.
+
+isitai makes no network request. For a remote file, open it with your own client and
+give the response to ``check_stream``.
 """
 from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, Optional, Union
+from typing import Any, BinaryIO, Dict, Optional, Union
 
 from . import _isitai
 
-__all__ = ["check", "check_text", "check_file"]
+__all__ = ["check", "check_text", "check_file", "check_stream", "DEFAULT_MAX_STREAM_BYTES"]
 
 Report = Dict[str, Any]
+
+#: Default ``max_bytes`` of ``check_stream``: 256 MiB.
+DEFAULT_MAX_STREAM_BYTES: int = _isitai.DEFAULT_MAX_STREAM_BYTES
+
+_READ_SIZE = 1024 * 1024
 
 
 def check_text(text: str) -> Report:
@@ -74,4 +84,53 @@ def check(
     """
     return json.loads(
         _isitai.check_bytes_json(bytes(data), trust_anchors_pem, declared_mime, effort)
+    )
+
+
+def check_stream(
+    fileobj: BinaryIO,
+    *,
+    max_bytes: int = DEFAULT_MAX_STREAM_BYTES,
+    trust_anchors_pem: Optional[str] = None,
+    declared_mime: Optional[str] = None,
+    effort: Optional[str] = None,
+) -> Report:
+    """Checks a stream that cannot seek: any binary object with ``read(size)``.
+
+    Examples: ``urllib.request.urlopen(url)``, a boto3 ``StreamingBody``,
+    ``sys.stdin.buffer``, the ``raw`` of a ``requests`` response (set
+    ``raw.decode_content = True`` first, or a compressed body arrives compressed).
+    The caller opens the source: isitai makes no network request.
+
+    The stream is read into memory in chunks, up to ``max_bytes``, then checked like
+    ``check``. A stream that holds more than ``max_bytes`` raises ``ValueError``: a cut
+    file is never analysed, because its C2PA result would be wrong. A ``read`` that
+    returns ``str`` (a file opened in text mode) raises ``TypeError``.
+
+    Same other keyword arguments as ``check_file``.
+    """
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
+        raise TypeError(f"max_bytes must be an int, got {type(max_bytes).__name__}")
+    if max_bytes < 0:
+        raise ValueError(f"max_bytes must not be negative, got {max_bytes}")
+    # One growing buffer: memory follows the bytes received, not the number of reads.
+    data = bytearray()
+    while True:
+        # One byte more than the limit is enough to know that the stream is too large.
+        chunk = fileobj.read(min(_READ_SIZE, max_bytes + 1 - len(data)))
+        if chunk is None:
+            # A non-blocking stream with no data ready: not the end of the stream.
+            raise TypeError("check_stream needs a blocking stream, read() returned None")
+        if not isinstance(chunk, (bytes, bytearray, memoryview)):
+            raise TypeError(f"check_stream needs a binary stream, read() returned {type(chunk).__name__}")
+        if len(chunk) == 0:
+            break
+        data += chunk  # extends by the chunk's bytes, whatever the memoryview item size
+        if len(data) > max_bytes:
+            raise ValueError(f"stream is larger than the limit of {max_bytes} bytes")
+    return check(
+        bytes(data),
+        trust_anchors_pem=trust_anchors_pem,
+        declared_mime=declared_mime,
+        effort=effort,
     )

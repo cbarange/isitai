@@ -1,4 +1,85 @@
-use crate::{Evidence, Layer, Location, Origin, Rules};
+use crate::{Evidence, Layer, Location, Origin, Rules, SNIFF_LEN};
+
+/// Windows-1252 for the bytes 0x80 to 0x9F; every other byte is the code point of
+/// the same value, as in Latin-1. The five bytes the code page leaves undefined
+/// (0x81, 0x8D, 0x8F, 0x90, 0x9D) map to the control of the same value, as browsers do.
+#[rustfmt::skip]
+const WINDOWS_1252_80_9F: [char; 32] = [
+    '\u{20AC}', '\u{81}',   '\u{201A}', '\u{192}',  '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}',
+    '\u{2C6}',  '\u{2030}', '\u{160}',  '\u{2039}', '\u{152}',  '\u{8D}',   '\u{17D}',  '\u{8F}',
+    '\u{90}',   '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '\u{2022}', '\u{2013}', '\u{2014}',
+    '\u{2DC}',  '\u{2122}', '\u{161}',  '\u{203A}', '\u{153}',  '\u{9D}',   '\u{17E}',  '\u{178}',
+];
+
+/// Decodes the content of a file as text. Returns the text and, when the content
+/// is not UTF-8, the name of its encoding; `None` when the content is not text.
+/// `truncated`: the bytes are the start of a longer content, so the cut may fall
+/// inside a character.
+///
+/// - UTF-16 LE or BE needs a byte order mark, which is left out of the text.
+/// - UTF-8 is returned as it is: a leading byte order mark stays in the text.
+/// - Anything else is read as Windows-1252, but only when it is clearly text.
+///
+/// Clearly text: the first `SNIFF_LEN` bytes (or UTF-16 characters) hold no NUL
+/// and no other control below U+0020, apart from tab, LF, CR and FF.
+pub fn decode(bytes: Vec<u8>, truncated: bool) -> Option<(String, Option<&'static str>)> {
+    type Unit = fn([u8; 2]) -> u16;
+    let utf16: [(&[u8], &str, Unit); 2] = [
+        (b"\xFF\xFE", "UTF-16LE", u16::from_le_bytes),
+        (b"\xFE\xFF", "UTF-16BE", u16::from_be_bytes),
+    ];
+    for (bom, name, unit) in utf16 {
+        if let Some(body) = bytes.strip_prefix(bom) {
+            let text = decode_utf16(body, unit, truncated)?;
+            let clear = !text.chars().take(SNIFF_LEN).any(is_binary_control);
+            return clear.then_some((text, Some(name)));
+        }
+    }
+    let error = match String::from_utf8(bytes) {
+        Ok(text) => return Some((text, None)),
+        Err(error) => error,
+    };
+    // The size limit can cut the last character in two: keep what precedes it.
+    if truncated && error.utf8_error().error_len().is_none() {
+        let valid = error.utf8_error().valid_up_to();
+        let mut bytes = error.into_bytes();
+        bytes.truncate(valid);
+        let text = String::from_utf8(bytes).expect("valid up to this length");
+        return Some((text, None));
+    }
+    let bytes = error.into_bytes();
+    let head = &bytes[..bytes.len().min(SNIFF_LEN)];
+    if head.iter().any(|&b| is_binary_control(char::from(b))) {
+        return None;
+    }
+    let text = bytes
+        .iter()
+        .map(|&b| match b {
+            0x80..=0x9F => WINDOWS_1252_80_9F[usize::from(b - 0x80)],
+            _ => char::from(b),
+        })
+        .collect();
+    Some((text, Some("Windows-1252")))
+}
+
+/// A control character that text files do not hold.
+fn is_binary_control(c: char) -> bool {
+    c < ' ' && !matches!(c, '\t' | '\n' | '\r' | '\x0C')
+}
+
+/// Strict UTF-16: a lone surrogate or half a code unit means the content is not text.
+fn decode_utf16(body: &[u8], unit: fn([u8; 2]) -> u16, truncated: bool) -> Option<String> {
+    let (pairs, rest) = body.as_chunks::<2>();
+    if !rest.is_empty() && !truncated {
+        return None;
+    }
+    let mut units: Vec<u16> = pairs.iter().map(|&pair| unit(pair)).collect();
+    // The size limit can cut a surrogate pair in two: drop its first half.
+    if truncated && matches!(units.last(), Some(0xD800..=0xDBFF)) {
+        units.pop();
+    }
+    String::from_utf16(&units).ok()
+}
 
 pub fn scan(input: &str, rules: &Rules) -> Vec<Evidence> {
     let mut out = Vec::new();

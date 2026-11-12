@@ -62,5 +62,6 @@ fn _isitai(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(check_text_json, m)?)?;
     m.add_function(wrap_pyfunction!(check_bytes_json, m)?)?;
     m.add_function(wrap_pyfunction!(check_file_json, m)?)?;
+    m.add("DEFAULT_MAX_STREAM_BYTES", isitai::DEFAULT_MAX_STREAM_BYTES)?;
     Ok(())
 }

@@ -1,7 +1,8 @@
 //! Exit codes and argument handling of the `isitai` binary.
 
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 const AI_TEXT: &str = "Paris :contentReference[oaicite:0]{index=0}.";
 
@@ -10,6 +11,20 @@ fn isitai(args: &[&str]) -> Output {
         .args(args)
         .output()
         .expect("the binary runs")
+}
+
+/// Runs the binary with `input` on its standard input.
+fn isitai_stdin(args: &[&str], input: &[u8]) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_isitai"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the binary runs");
+    // Dropping the handle closes the pipe. The binary may stop reading at its limit.
+    let _ = child.stdin.take().unwrap().write_all(input);
+    child.wait_with_output().expect("the binary ends")
 }
 
 fn code(out: &Output) -> i32 {
@@ -44,6 +59,49 @@ fn exit_1_on_an_ai_signal() {
     let out = isitai(&[&path]);
     assert_eq!(code(&out), 1);
     assert!(String::from_utf8_lossy(&out.stdout).contains("\"text.oaicite\""));
+}
+
+#[test]
+fn dash_reads_standard_input() {
+    let out = isitai_stdin(&["-"], format!("<p>{AI_TEXT}</p>").as_bytes());
+    assert_eq!(code(&out), 1);
+    let reports: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(reports[0]["path"], "-");
+    assert_eq!(reports[0]["media"], "text/html");
+    assert_eq!(reports[0]["evidence"][0]["id"], "text.oaicite");
+
+    // Same report as the same bytes in a file, apart from `path`.
+    let (_, path) = file("stdin", "page", &format!("<p>{AI_TEXT}</p>"));
+    let mut from_file: serde_json::Value =
+        serde_json::from_slice(&isitai(&[&path]).stdout).unwrap();
+    from_file[0]["path"] = "-".into();
+    assert_eq!(reports, from_file);
+
+    assert_eq!(code(&isitai_stdin(&["-"], b"Bonjour.")), 0);
+    assert_eq!(code(&isitai_stdin(&["-"], b"")), 0);
+}
+
+#[test]
+fn standard_input_over_the_limit_is_an_error() {
+    let size = AI_TEXT.len().to_string();
+    assert_eq!(
+        code(&isitai_stdin(
+            &["--max-bytes", &size, "-"],
+            AI_TEXT.as_bytes()
+        )),
+        1
+    );
+    // One byte over: an error, and no report from a cut input.
+    let out = isitai_stdin(&["--max-bytes", "43", "-"], AI_TEXT.as_bytes());
+    assert_eq!(code(&out), 2);
+    assert!(stderr(&out).contains("-: stream is larger than the limit of 43 bytes"));
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("verdict"));
+
+    for args in [&["--max-bytes"][..], &["--max-bytes", "1k", "-"]] {
+        let out = isitai_stdin(args, b"x");
+        assert_eq!(code(&out), 2);
+        assert!(stderr(&out).contains("--max-bytes needs a number of bytes"));
+    }
 }
 
 #[test]
@@ -115,6 +173,7 @@ fn usage_says_what_options_and_exit_code_0_mean() {
         assert_eq!(code(&out), 2);
         let usage = stderr(&out);
         assert!(usage.contains("[--effort fast|standard]"));
+        assert!(usage.contains("- reads standard input"));
         assert!(usage.contains("Options apply to the files that follow them."));
         assert!(usage.contains("Exit code 0 does not mean human-made"));
     }

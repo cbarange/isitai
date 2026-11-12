@@ -31,7 +31,7 @@ Légende :
 | Audio | MP3, WAV ; FLAC 👁 ; M4A 👁 (c2pa-python refuse de le signer) | ✅ par défaut, `ai-proven` vérifié pour MP3 et WAV | 🔜 ID3 `TSSE`/`TXXX`, RIFF `INFO/ISFT`, Vorbis comments (v0.2) ; 👁 ElevenLabs, Suno, Udio | 🔜 AudioSeal (v0.3) | 0 | v0.1 (C2PA), v0.2 |
 | Document | PDF | ✅ feature `pdf`, activée par défaut ; `ai-proven` vérifié sur un PDF signé, et `express-signed.pdf` (Adobe Express) donne `ai-signal` | ✅ XMP non compressé ; 🔜 dictionnaire Info `/Producer`, `/Creator` (v0.2) ; 👁 exports Gamma, Copilot, Canva | — | +0,5 Mo | v0.1 |
 | Document | DOCX, XLSX, PPTX, EPUB | 👁 `c2pa-rs` contient un `zip_io`, mais la doc ne liste pas ces formats : à vérifier | 🔜 `docProps/app.xml` `Application`, `docProps/core.xml` (v0.2) | — | à mesurer | v0.2 |
-| Texte | texte brut, Markdown, HTML | 🔜 feature `c2pa-text` (API amont instable, +0,13 Mo, opt-in) | ✅ règles d'artefacts (`crates/isitai-core/rules/text.toml`) ; 🔜 HTML : texte visible + liens `utm_source` (v0.2) | SynthID-Text exige les clés du fournisseur | 0 | v0.1 |
+| Texte | texte brut, Markdown, HTML ; encodages UTF-8, UTF-16 avec BOM, Windows-1252 | 🔜 feature `c2pa-text` (API amont instable, +0,13 Mo, opt-in) | ✅ règles d'artefacts (`crates/isitai-core/rules/text.toml`) ; 🔜 HTML : texte visible + liens `utm_source` (v0.2) | SynthID-Text exige les clés du fournisseur | 0 | v0.1 |
 
 Règle : un format ne passe en ✅ qu'avec au moins une fixture positive et une négative dans le corpus.
 
@@ -40,30 +40,44 @@ Règle : un format ne passe en ✅ qu'avec au moins une fixture positive et une 
 Node :
 
 ```ts
-import { check, checkText, checkFile } from "isitai";
+import { check, checkText, checkFile, checkStream } from "isitai";
 
 checkText("…texte…");            // texte
 await checkFile("photo.jpg");    // chemin
 check(buffer, { mime: "image/png" }); // octets
+await checkStream(readable, { maxBytes }); // flux non repositionnable
 ```
 
 Python :
 
 ```python
-from isitai import check, check_text, check_file
+from isitai import check, check_text, check_file, check_stream
 ```
 
 CLI :
 
 ```bash
-isitai [--anchors racines.pem] [--effort fast|standard] [--text "…"] photo.jpg essay.txt
+isitai [--anchors racines.pem] [--effort fast|standard] [--max-bytes N] [--text "…"] photo.jpg essay.txt
+curl -s URL | isitai -           # « - » lit l'entrée standard
 ```
 
 La sortie est toujours du JSON. Les options s'appliquent aux fichiers qui les suivent.
 
 Sortie de la CLI : code `0` = rien trouvé, `1` = signal ou preuve IA, `2` = erreur. Le code `0` ne veut pas dire « fait par un humain ».
 
-Erreurs (code `2`) : option inconnue commençant par `--`, fichier illisible, dossier, fichier `--anchors` inutilisable.
+Erreurs (code `2`) : option inconnue commençant par `--`, fichier illisible, dossier, fichier `--anchors` inutilisable, entrée standard plus longue que `--max-bytes`.
+
+### Flux et fichiers distants
+
+La lib ne contient aucun client réseau (ni HTTP, ni S3, ni FTP/SFTP) : l'appelant ouvre la source et passe le flux. Les identifiants, les reprises et les délais restent chez lui, et le critère 4 (aucun appel réseau) tient par construction.
+
+- Cœur : `check_stream<R: Read>(input, max_bytes, opts, rules) -> Result<Report, StreamError>`. Le flux est lu en mémoire, puis contrôlé comme `check_bytes` : la validation C2PA hache l'actif entier et exige `Seek`.
+- `DEFAULT_MAX_STREAM_BYTES` = 256 Mio. La lecture s'arrête à `max_bytes + 1` octets, quelle que soit la longueur annoncée par la source ; aucune allocation n'est faite d'après une longueur déclarée.
+- Un flux plus long que la limite est une erreur (`StreamError::TooLarge`), comme un flux qui échoue (`StreamError::Read`) : un fichier coupé n'est jamais analysé, son résultat C2PA serait faux.
+- Node : `checkStream(readable, { maxBytes, … })`, asynchrone, accepte un `Readable`, un `ReadableStream` web ou tout itérable asynchrone de `Buffer`/`Uint8Array` ; rejette avec `RangeError` au-delà de la limite. La collecte est faite dans `index.js`, puis `check` est appelé.
+- Python : `check_stream(fileobj, *, max_bytes=…, …)`, accepte tout objet binaire qui a `read(taille)` ; lève `ValueError` au-delà de la limite. La collecte est faite dans le wrapper, puis `check` est appelé.
+- CLI : l'argument `-` lit l'entrée standard ; `--max-bytes N` change la limite. Le rapport porte `"path": "-"`.
+- Node et Python exposent `DEFAULT_MAX_STREAM_BYTES`, lu dans le cœur.
 
 ### Ancres de confiance
 
@@ -164,7 +178,16 @@ Toutes ces règles restent marquées `verified = false` tant qu'elles ne sont pa
 
 - Il n'y a pas de règle sur le Markdown : `**gras**` et `### titre` touchent 81 % des fichiers Markdown réels.
 - `text.self-disclosure` ne doit pas toucher une phrase humaine comme « As an AI model grows, its training bill grows faster. » ou « En tant qu'intelligence artificielle générative, ChatGPT … ».
-- Les règles texte tournent aussi sur le contenu d'un fichier reconnu comme texte par le crate `infer` (`text/*` : HTML, XML, script shell ; et SVG), en plus des autres couches, dans la limite `MAX_TEXT_BYTES`. Un texte non UTF-8 ou plus long que la limite donne un avertissement : le texte n'a pas été analysé, ou pas en entier.
+- Les règles texte tournent aussi sur le contenu d'un fichier reconnu comme texte par le crate `infer` (`text/*` : HTML, XML, script shell ; et SVG), en plus des autres couches, dans la limite `MAX_TEXT_BYTES`. Un texte plus long que la limite donne un avertissement : le texte n'a pas été analysé en entier.
+- Encodages du contenu d'un fichier, essayés dans cet ordre (bibliothèque standard seule, aucun crate) :
+  1. UTF-16 LE ou BE, seulement avec une marque d'ordre d'octets (BOM). Décodage strict : un substitut isolé ou un demi-code rend le contenu « non texte ». Le BOM ne fait pas partie du texte décodé.
+  2. UTF-8, avec ou sans BOM. Le BOM UTF-8 reste dans le texte (U+FEFF en tête, ignoré par `text.zero-width`) : les offsets sont ceux du fichier, comme avant.
+  3. Sinon Windows-1252 (qui couvre Latin-1), seulement si le contenu est clairement du texte : aucun octet NUL ni octet de contrôle inférieur à 0x20, hors tabulation, LF, CR et FF, dans les 8 192 premiers octets. Les cinq octets non définis (0x81, 0x8D, 0x8F, 0x90, 0x9D) deviennent le caractère de contrôle de même valeur.
+  4. Sinon le contenu n'est pas lu comme texte : avertissement « text not analysed: the content is not UTF-8 », `media` = `application/octet-stream` si aucun format n'est reconnu.
+- La même règle « clairement du texte » s'applique aux 8 192 premiers caractères d'un contenu UTF-16.
+- Un encodage autre qu'UTF-8 est signalé par un avertissement, sans nouveau champ : « text decoded as UTF-16LE », « text decoded as UTF-16BE », « text decoded as Windows-1252 ».
+- Les positions `start`/`end` restent des offsets en octets UTF-8 **du texte décodé**. Pour un fichier UTF-16 ou Windows-1252, elles ne sont donc pas des offsets dans le fichier.
+- Non lus : UTF-16 sans BOM, UTF-32. Un autre encodage 8 bits (Latin-2, cyrillique) est lu comme Windows-1252 : les artefacts ASCII restent détectés, pas les règles à lettres accentuées.
 - **Piège** : U+200D (ZWJ) est légitime dans les emojis composés. On l'ignore entre deux emojis.
 - **Piège** : U+202F et U+00A0 sont de la typographie française normale (`« »`, `:`, `?`). On ne s'en sert jamais comme signal.
 - **Piège** : le tiret cadratin et les tournures « IA » ne sont pas des preuves. On les exclut de la v0.1.
@@ -254,6 +277,8 @@ Crates : `c2pa` (sans `openssl` ni `default_http` : pas d'OpenSSL système, pas 
   - [x] L'avertissement d'un manifeste `Valid` dit ce que `c2pa` a établi (signataire hors liste, horodatage non reconnu, signataire d'un ingrédient non reconnu), sinon « valid but not fully trusted ».
 - [ ] **Fichiers signés sous l'ancienne liste « interim »** (contentcredentials.org) : aucun de ses 26 certificats n'est dans la liste officielle. Firefly et Photoshop (2025) restent `Valid`, donc `ai-signal` au mieux : ces fichiers ne sont pas de confiance par défaut. Décider s'il faut une seconde liste.
 - [ ] Corpus réel : au moins un fichier par générateur (ChatGPT, Firefly, Gemini, Midjourney) et des photos d'appareils signées.
+- [x] **Flux non repositionnables** : `check_stream` (cœur), `checkStream` (Node), `check_stream` (Python), `isitai -` (CLI), limite `DEFAULT_MAX_STREAM_BYTES`. Aucun client réseau dans la lib ; recettes HTTP, S3 et SFTP dans le README.
+- [x] **Encodages de texte** : UTF-16 LE/BE avec BOM, UTF-8 avec BOM, Windows-1252 quand le contenu est clairement du texte ; avertissement « text decoded as … ».
 - [ ] Mesurer l'addon Node en profil `size` (9,4 Mo en `release`, limite de 10 Mo).
 - [ ] Valider en CI le build `wasm32-wasip1-threads`.
 - [ ] **Démo navigateur (WebAssembly).**

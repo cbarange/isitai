@@ -4,7 +4,8 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { check, checkText, checkFile } = require('..');
+const { Readable } = require('node:stream');
+const { check, checkText, checkFile, checkStream, DEFAULT_MAX_STREAM_BYTES } = require('..');
 
 test('checkText finds a ChatGPT citation artifact', () => {
   const r = checkText('Élève doué :contentReference[oaicite:0]{index=0}');
@@ -65,6 +66,75 @@ test('text rules run inside an HTML file', () => {
   const r = check(html);
   assert.strictEqual(r.media, 'text/html');
   assert.strictEqual(r.verdict, 'ai-signal');
+});
+
+const HTML = Buffer.from('<!DOCTYPE html>\n<p>Paris :contentReference[oaicite:0]{index=0}</p>');
+
+test('checkStream reads a Readable, a web stream and an async generator', async () => {
+  const expected = check(HTML);
+  assert.strictEqual(expected.verdict, 'ai-signal');
+  assert.strictEqual(DEFAULT_MAX_STREAM_BYTES, 256 * 1024 * 1024);
+  // A Readable that gives the data in three chunks.
+  const parts = [HTML.subarray(0, 5), HTML.subarray(5, 20), HTML.subarray(20)];
+  assert.deepStrictEqual(await checkStream(Readable.from(parts)), expected);
+  assert.deepStrictEqual(await checkStream(Readable.toWeb(Readable.from(parts))), expected);
+  async function* generate() {
+    for (const part of parts) yield new Uint8Array(part);
+  }
+  assert.deepStrictEqual(await checkStream(generate()), expected);
+  // The limit is the size of the data: accepted.
+  assert.deepStrictEqual(await checkStream(generate(), { maxBytes: HTML.length }), expected);
+  assert.deepStrictEqual(await checkStream(Readable.from([])), check(Buffer.alloc(0)));
+  // Options go to the check.
+  await assert.rejects(checkStream(generate(), { effort: 'turbo' }), /unknown effort `turbo`/);
+});
+
+test('checkStream rejects a stream over maxBytes and stops reading it', async () => {
+  let yielded = 0;
+  let closed = false;
+  async function* endless() {
+    try {
+      for (;;) {
+        yielded += 1;
+        yield Buffer.alloc(1024, 120);
+      }
+    } finally {
+      closed = true;
+    }
+  }
+  await assert.rejects(checkStream(endless(), { maxBytes: 4096 }), {
+    name: 'RangeError',
+    message: 'stream is larger than the limit of 4096 bytes',
+  });
+  assert.strictEqual(yielded, 5);
+  assert.strictEqual(closed, true);
+  // One byte over the limit.
+  await assert.rejects(checkStream(Readable.from([HTML]), { maxBytes: HTML.length - 1 }), RangeError);
+  const readable = Readable.from([HTML, HTML]);
+  await assert.rejects(checkStream(readable, { maxBytes: HTML.length }), RangeError);
+  assert.strictEqual(readable.destroyed, true);
+});
+
+test('checkStream rejects what is not a stream of bytes', async () => {
+  await assert.rejects(checkStream(Readable.from(['text', 'chunks'])), TypeError);
+  await assert.rejects(checkStream(Readable.from([HTML]), { maxBytes: -1 }), TypeError);
+  await assert.rejects(checkStream(Readable.from([HTML]), { maxBytes: '10' }), TypeError);
+  await assert.rejects(checkStream(HTML.toString()), TypeError);
+  // An error of the source is passed on.
+  async function* broken() {
+    yield HTML;
+    throw new Error('connection reset');
+  }
+  await assert.rejects(checkStream(broken()), /connection reset/);
+});
+
+test('text in Windows-1252 and UTF-16 is decoded', () => {
+  const latin1 = check(Buffer.from('Très bien :contentReference[oaicite:0]{index=0}', 'latin1'));
+  assert.strictEqual(latin1.verdict, 'ai-signal');
+  assert.deepStrictEqual(latin1.warnings, ['text decoded as Windows-1252']);
+  const utf16 = check(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Très bien cite turn0search1', 'utf16le')]));
+  assert.strictEqual(utf16.verdict, 'ai-signal');
+  assert.deepStrictEqual(utf16.warnings, ['text decoded as UTF-16LE']);
 });
 
 test('checkFile rejects a missing file', async () => {

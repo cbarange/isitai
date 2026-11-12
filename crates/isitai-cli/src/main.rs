@@ -1,15 +1,20 @@
-//! Usage: isitai [--anchors roots.pem] [--effort fast|standard] [--text "string"] [FILE...]
+//! Usage: isitai [--anchors roots.pem] [--effort fast|standard] [--max-bytes N] [--text "string"] [FILE|-...]
 //! Options apply to the files that follow them. `--anchors` replaces the embedded
 //! C2PA trust lists, for signers and for time-stamps.
+//! `-` reads standard input, whole and into memory, up to `--max-bytes` (default 256 MiB).
 //! Prints one JSON report per input. Exit: 0 nothing found (which does not mean
 //! human-made), 1 AI signal or proof, 2 error.
 
-use isitai::{check_reader, check_text, validate_trust_anchors, Options, Rules, Verdict};
+use isitai::{
+    check_reader, check_stream, check_text, validate_trust_anchors, Options, Report, Rules,
+    Verdict, DEFAULT_MAX_STREAM_BYTES,
+};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let mut opts = Options::default();
+    let mut max_bytes = DEFAULT_MAX_STREAM_BYTES;
     let mut reports = Vec::new();
     let rules = Rules::embedded();
     let mut error = false;
@@ -25,6 +30,10 @@ fn main() -> ExitCode {
                 Some(Err(e)) => return usage(&e),
                 None => return usage("--effort needs a value"),
             },
+            "--max-bytes" => match args.next().map(|n| n.parse()) {
+                Some(Ok(n)) => max_bytes = n,
+                _ => return usage("--max-bytes needs a number of bytes"),
+            },
             "--text" => match args.next() {
                 Some(t) => reports.push(serde_json::to_value(check_text(&t, &rules)).unwrap()),
                 None => return usage("--text needs a value"),
@@ -33,6 +42,13 @@ fn main() -> ExitCode {
             unknown if unknown.starts_with("--") => {
                 return usage(&format!("unknown option `{unknown}`"))
             }
+            "-" => match check_stream(std::io::stdin().lock(), max_bytes, &opts, &rules) {
+                Ok(report) => reports.push(with_path(report, "-")),
+                Err(e) => {
+                    eprintln!("-: {e}");
+                    error = true;
+                }
+            },
             path => match open_file(path) {
                 Ok(file) => {
                     let file_opts = Options {
@@ -40,9 +56,7 @@ fn main() -> ExitCode {
                         ..opts.clone()
                     };
                     let report = check_reader(std::io::BufReader::new(file), &file_opts, &rules);
-                    let mut v = serde_json::to_value(report).unwrap();
-                    v["path"] = path.into();
-                    reports.push(v);
+                    reports.push(with_path(report, path));
                 }
                 Err(e) => {
                     eprintln!("{path}: {e}");
@@ -68,6 +82,13 @@ fn main() -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+/// The report as printed for a file argument: with the argument as `path`.
+fn with_path(report: Report, path: &str) -> serde_json::Value {
+    let mut v = serde_json::to_value(report).unwrap();
+    v["path"] = path.into();
+    v
 }
 
 /// Reads the PEM bundle given to `--anchors` and checks that it is usable.
@@ -114,9 +135,10 @@ fn usage(msg: &str) -> ExitCode {
         eprintln!("error: {msg}");
     }
     eprintln!(
-        "usage: isitai [--anchors roots.pem] [--effort fast|standard] [--text \"string\"] [FILE...]"
+        "usage: isitai [--anchors roots.pem] [--effort fast|standard] [--max-bytes N] [--text \"string\"] [FILE|-...]"
     );
     eprintln!("Options apply to the files that follow them.");
+    eprintln!("- reads standard input, whole and into memory, up to --max-bytes (default {DEFAULT_MAX_STREAM_BYTES}).");
     eprintln!("--anchors replaces the embedded C2PA trust lists (signers and time-stamps).");
     eprintln!("Exit code: 0 nothing found, 1 AI signal or proof, 2 error.");
     eprintln!("Exit code 0 does not mean human-made: it means no proof and no signal was found.");

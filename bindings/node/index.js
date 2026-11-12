@@ -31,4 +31,47 @@ function check(data, options = {}) {
   return JSON.parse(native.checkBufferJson(buf, options.trustAnchorsPem, options.declaredMime, options.effort));
 }
 
-module.exports = { check, checkText, checkFile };
+/** Default `maxBytes` of `checkStream`: 256 MiB. */
+const DEFAULT_MAX_STREAM_BYTES = native.DEFAULT_MAX_STREAM_BYTES;
+
+/**
+ * Checks a stream that cannot seek: an HTTP response body, an object store stream, an
+ * upload being received. The caller opens the source: isitai makes no network request.
+ * The chunks are collected in memory, then checked like `check`.
+ * Rejects when the stream holds more than `maxBytes` (a cut file is never analysed), when
+ * the stream fails, when a chunk is not bytes, and on the errors of `check`.
+ * @param {AsyncIterable<Buffer|Uint8Array>} readable a Node Readable, a web ReadableStream, an async generator
+ * @param {{maxBytes?: number, trustAnchorsPem?: string, declaredMime?: string, effort?: 'fast'|'standard'}} [options]
+ */
+async function checkStream(readable, options = {}) {
+  if (readable == null || typeof readable[Symbol.asyncIterator] !== 'function' && typeof readable[Symbol.iterator] !== 'function' || readable instanceof Uint8Array || typeof readable === 'string') {
+    throw new TypeError('checkStream needs a stream (Readable, web ReadableStream or async iterable); use check for bytes and checkText for text');
+  }
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_STREAM_BYTES;
+  if (!Number.isInteger(maxBytes) || maxBytes < 0) {
+    throw new TypeError(`maxBytes must be a non-negative integer, got ${maxBytes}`);
+  }
+  // One growing buffer: memory follows the bytes received, not the number of chunks
+  // (an upload can arrive as millions of 1-byte chunks).
+  let buf = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes));
+  let size = 0;
+  // Leaving the loop with an error closes the source.
+  for await (const chunk of readable) {
+    if (!(chunk instanceof Uint8Array)) {
+      throw new TypeError('checkStream needs chunks of bytes (Buffer or Uint8Array), not strings or objects');
+    }
+    if (size + chunk.byteLength > maxBytes) {
+      throw new RangeError(`stream is larger than the limit of ${maxBytes} bytes`);
+    }
+    if (size + chunk.byteLength > buf.length) {
+      const grown = Buffer.allocUnsafe(Math.min(maxBytes, Math.max(buf.length * 2, size + chunk.byteLength)));
+      buf.copy(grown, 0, 0, size);
+      buf = grown;
+    }
+    buf.set(chunk, size);
+    size += chunk.byteLength;
+  }
+  return check(buf.subarray(0, size), options);
+}
+
+module.exports = { check, checkText, checkFile, checkStream, DEFAULT_MAX_STREAM_BYTES };

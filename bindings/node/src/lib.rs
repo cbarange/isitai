@@ -25,6 +25,10 @@ fn options(
     })
 }
 
+/// Default `maxBytes` of `checkStream`: the constant of the core.
+#[napi]
+pub const DEFAULT_MAX_STREAM_BYTES: f64 = isitai::DEFAULT_MAX_STREAM_BYTES as f64;
+
 #[napi]
 pub fn check_text_json(text: String) -> String {
     check_text(&text, Rules::shared()).to_json()

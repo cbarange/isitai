@@ -6,7 +6,10 @@ export interface Evidence {
   strength: 'weak' | 'strong' | 'proof';
   origin: 'ai' | 'capture';
   detail: string;
-  /** For text: `start`/`end` are UTF-8 byte offsets; use `text`, not `input.slice(start, end)`. */
+  /**
+   * For text: `start`/`end` are UTF-8 byte offsets; use `text`, not `input.slice(start, end)`.
+   * For a file in another encoding (UTF-16, Windows-1252), they are offsets in the decoded text.
+   */
   location?: { start: number; end: number; text: string } | { field: string };
 }
 
@@ -74,3 +77,29 @@ export function checkText(text: string): Report;
 export function checkFile(path: string, options?: CheckOptions): Promise<Report>;
 /** Checks in-memory bytes. Throws on an unknown `effort` and on unusable `trustAnchorsPem`. */
 export function check(data: Buffer | Uint8Array, options?: CheckOptions): Report;
+
+/** Default `maxBytes` of `checkStream`: 256 MiB. */
+export const DEFAULT_MAX_STREAM_BYTES: number;
+
+export interface CheckStreamOptions extends CheckOptions {
+  /** Largest stream to read, in bytes. Default: `DEFAULT_MAX_STREAM_BYTES`. */
+  maxBytes?: number;
+}
+
+/**
+ * Checks a stream that cannot seek: a Node `Readable`, a web `ReadableStream` (`fetch().body`),
+ * the `Body` of an AWS SDK v3 `GetObject`, or any async iterable of byte chunks. The caller
+ * opens the source: isitai makes no network request.
+ *
+ * The chunks are collected in memory, up to `maxBytes`, then checked like `check`. Rejects
+ * with a `RangeError` when the stream holds more than `maxBytes` (a cut file is never
+ * analysed), with a `TypeError` when a chunk is not bytes or `maxBytes` is not a
+ * non-negative integer, with the error of the stream when it fails, and like `check`.
+ *
+ * Only the collection is asynchronous: the check then runs on the event loop, like `check`.
+ * Options other than `maxBytes` are validated after the stream is read.
+ */
+export function checkStream(
+  readable: AsyncIterable<Buffer | Uint8Array>,
+  options?: CheckStreamOptions,
+): Promise<Report>;

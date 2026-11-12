@@ -23,6 +23,9 @@ correct answer (not because a case failed):
   files carry one weak signal only.
 - `ai_utm_chatgpt.txt`, `ai_utm_openai.txt`: ai-signal -> no-signal. `text.utm-ai` is now weak:
   the tag describes a link, not the text.
+- `tp_latin1.txt`, `tp_utf16le_bom.txt`: verdict kept (ai-signal), `media` added (text/plain).
+  UTF-16 with a byte order mark and Windows-1252 text are now decoded, so the file must be
+  reported as text.
 Content changed, label kept: `perf_png_300k_parameters.png` now carries `Steps: 1` in each
 chunk, because a `parameters` key without an A1111 field is no longer evidence.
 
@@ -299,8 +302,10 @@ add("tp_starts_rtf.rtf", "{\\rtf1\\ansi " + POS + "}", "ai-signal", **T)
 add("tp_mentions_svg.md", f"Pour le logo, utilisez `<svg width=\"16\">`.\n\n{POS}", "ai-signal",
     note="`<svg` in the first 8 KB switches the file to image/svg+xml", **T)
 add("tp_jsx_svg.jsx", f"export const Icon = () => <svg viewBox=\"0 0 1 1\"/>;\n// {POS}", "ai-signal", **T)
-add("tp_latin1.txt", f"{POS}Très bien, à bientôt.\n".encode("latin-1"), "ai-signal", note="ISO-8859-1 French text", **T)
-add("tp_utf16le_bom.txt", b"\xff\xfe" + POS.encode("utf-16-le"), "ai-signal", note="UTF-16 LE with BOM (Windows)", **T)
+add("tp_latin1.txt", f"{POS}Très bien, à bientôt.\n".encode("latin-1"), "ai-signal", media="text/plain",
+    note="ISO-8859-1 French text, decoded as Windows-1252", **T)
+add("tp_utf16le_bom.txt", b"\xff\xfe" + POS.encode("utf-16-le"), "ai-signal", media="text/plain",
+    note="UTF-16 LE with BOM (Windows)", **T)
 add("tp_crlf.txt", POS.replace("\n", "\r\n") * 2, "ai-signal", **T)
 add("tp_nul_bytes.txt", "abc\x00\x00" + POS, "ai-signal", note="text with NUL bytes", **T)
 fill = "x" * 79 + "\n"

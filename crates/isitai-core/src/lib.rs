@@ -53,6 +53,8 @@ pub enum Origin {
 pub enum Location {
     /// First match in a text. `start` and `end` are **UTF-8 byte offsets**, not
     /// JS/Python string indices; use `text` rather than slicing the input.
+    /// For a file in another encoding (UTF-16, Windows-1252) they are offsets in
+    /// the decoded text, not in the file.
     Span {
         start: usize,
         end: usize,
@@ -197,8 +199,65 @@ pub fn check_bytes(bytes: &[u8], opts: &Options, rules: &Rules) -> Report {
     check_reader(std::io::Cursor::new(bytes), opts, rules)
 }
 
+/// Largest stream that [`check_stream`] reads when the caller has no limit of its own.
+pub const DEFAULT_MAX_STREAM_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Why [`check_stream`] gave no report.
+#[derive(Debug)]
+pub enum StreamError {
+    /// The stream failed before its end.
+    Read(std::io::Error),
+    /// The stream holds more than `max_bytes`. A cut file is never analysed: its
+    /// C2PA result would be wrong.
+    TooLarge { max_bytes: u64 },
+}
+
+impl std::fmt::Display for StreamError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read(e) => write!(f, "read: {e}"),
+            Self::TooLarge { max_bytes } => {
+                write!(f, "stream is larger than the limit of {max_bytes} bytes")
+            }
+        }
+    }
+}
+
+impl std::error::Error for StreamError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Read(e) => Some(e),
+            Self::TooLarge { .. } => None,
+        }
+    }
+}
+
+/// Checks a stream that cannot seek (an HTTP body, an object store stream, standard
+/// input). The caller opens the source: this crate has no network client.
+///
+/// The stream is read whole into memory, then checked like [`check_bytes`]. At most
+/// `max_bytes + 1` bytes are read, whatever length the source declares; the buffer
+/// grows as data arrives, so it can reserve up to twice what it holds. A stream
+/// larger than `max_bytes`, or one that fails, is an error.
+pub fn check_stream<R: Read>(
+    input: R,
+    max_bytes: u64,
+    opts: &Options,
+    rules: &Rules,
+) -> Result<Report, StreamError> {
+    let mut bytes = Vec::new();
+    input
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(StreamError::Read)?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(StreamError::TooLarge { max_bytes });
+    }
+    Ok(check_bytes(&bytes, opts, rules))
+}
+
 /// Bytes sniffed to detect the format.
-const SNIFF_LEN: usize = 8192;
+pub(crate) const SNIFF_LEN: usize = 8192;
 /// Text is analysed up to this many bytes after the sniffed head; the rest is ignored.
 pub const MAX_TEXT_BYTES: u64 = 16 * 1024 * 1024;
 
@@ -220,8 +279,8 @@ pub fn check_reader<R: Read + Seek + Send>(mut input: R, opts: &Options, rules: 
     let sniffed = normalize_mime(infer::get(&head).map(|t| t.mime_type()), &head);
 
     let Some(mime) = sniffed else {
-        let (text, warning) = read_text(&mut input);
-        warnings.extend(warning);
+        let (text, text_warnings) = read_text(&mut input);
+        warnings.extend(text_warnings);
         let (media, evidence) = match &text {
             Some(t) => ("text/plain", text::scan(t, rules)),
             None => ("application/octet-stream", Vec::new()),
@@ -277,8 +336,8 @@ pub fn check_reader<R: Read + Seek + Send>(mut input: R, opts: &Options, rules: 
     }
 
     if is_text_like(&mime) {
-        let (text, warning) = read_text(&mut input);
-        warnings.extend(warning);
+        let (text, text_warnings) = read_text(&mut input);
+        warnings.extend(text_warnings);
         if let Some(t) = text {
             evidence.extend(text::scan(&t, rules));
         }
@@ -296,40 +355,36 @@ fn is_text_like(mime: &str) -> bool {
     mime.starts_with("text/") || mime == "image/svg+xml"
 }
 
-/// Reads the stream from its start as UTF-8 text, up to `SNIFF_LEN + MAX_TEXT_BYTES`.
-/// Returns the text that can be analysed, and a warning when the text was not
-/// analysed, or not fully.
-fn read_text<R: Read + Seek>(input: &mut R) -> (Option<String>, Option<String>) {
+/// Reads the stream from its start as text, up to `SNIFF_LEN + MAX_TEXT_BYTES`.
+/// Returns the text that can be analysed, and the warnings: the text was not
+/// analysed, not fully, or was decoded from an encoding other than UTF-8.
+fn read_text<R: Read + Seek>(input: &mut R) -> (Option<String>, Vec<String>) {
     let limit = SNIFF_LEN as u64 + MAX_TEXT_BYTES;
     let mut bytes = Vec::new();
     let read = input
         .seek(std::io::SeekFrom::Start(0))
         .and_then(|_| input.take(limit + 1).read_to_end(&mut bytes));
     if let Err(e) = read {
-        return (None, Some(format!("text not analysed: read: {e}")));
+        return (None, vec![format!("text not analysed: read: {e}")]);
     }
     let truncated = bytes.len() as u64 > limit;
     bytes.truncate(limit as usize);
-    let text = match String::from_utf8(bytes) {
-        Ok(text) => text,
-        // The size limit can cut the last character in two: keep what precedes it.
-        Err(e) if truncated && e.utf8_error().error_len().is_none() => {
-            let valid = e.utf8_error().valid_up_to();
-            let mut bytes = e.into_bytes();
-            bytes.truncate(valid);
-            String::from_utf8(bytes).expect("valid up to this length")
-        }
-        Err(_) => {
-            return (
-                None,
-                Some("text not analysed: the content is not UTF-8".into()),
-            )
-        }
+    let Some((text, encoding)) = text::decode(bytes, truncated) else {
+        return (
+            None,
+            vec!["text not analysed: the content is not UTF-8".into()],
+        );
     };
-    let warning = truncated.then(|| {
-        format!("text not fully analysed: only the first {limit} bytes were read as text")
-    });
-    (Some(text), warning)
+    let mut warnings = Vec::new();
+    if let Some(encoding) = encoding {
+        warnings.push(format!("text decoded as {encoding}"));
+    }
+    if truncated {
+        warnings.push(format!(
+            "text not fully analysed: only the first {limit} bytes were read as text"
+        ));
+    }
+    (Some(text), warnings)
 }
 
 /// Maps `infer` names to the names c2pa-rs expects, and detects SVG, which `infer`
@@ -536,28 +591,184 @@ mod tests {
         report.warnings.iter().any(|w| w.starts_with(prefix))
     }
 
+    /// UTF-16 with a byte order mark.
+    fn utf16(text: &str, bom: [u8; 2], unit: fn(u16) -> [u8; 2]) -> Vec<u8> {
+        let mut bytes = bom.to_vec();
+        bytes.extend(text.encode_utf16().flat_map(unit));
+        bytes
+    }
+
     #[test]
-    fn text_that_is_not_utf8_gives_a_warning() {
-        // Latin-1 text, no format sniffed.
-        let latin1 = check(
-            b"Tr\xE8s bien :contentReference[oaicite:0]{index=0}.",
-            Effort::Standard,
+    fn utf16_with_a_byte_order_mark_is_decoded() {
+        let text = format!("Très bien 😀 {ARTIFACT}");
+        for (bytes, encoding) in [
+            (utf16(&text, [0xFF, 0xFE], u16::to_le_bytes), "UTF-16LE"),
+            (utf16(&text, [0xFE, 0xFF], u16::to_be_bytes), "UTF-16BE"),
+        ] {
+            let report = check(&bytes, Effort::Standard);
+            assert_eq!(report.media, "text/plain");
+            assert_eq!(report.verdict, Verdict::AiSignal, "{encoding}");
+            assert_eq!(report.warnings, [format!("text decoded as {encoding}")]);
+            // The span is in the decoded text, which leaves the byte order mark out.
+            let Some(Location::Span { start, end, .. }) = &report.evidence[0].location else {
+                panic!("a text span");
+            };
+            assert_eq!(&text[*start..*end], ":contentReference[oaicite:0]{index=0}");
+        }
+        // Without a byte order mark, UTF-16 is not recognised: every other byte is NUL.
+        let no_bom = &utf16(&text, [0xFF, 0xFE], u16::to_le_bytes)[2..];
+        assert_eq!(check(no_bom, Effort::Standard).verdict, Verdict::NoSignal);
+    }
+
+    #[test]
+    fn utf8_with_a_byte_order_mark_is_plain_utf8() {
+        let text = format!("\u{FEFF}Très bien {ARTIFACT}");
+        let report = check(text.as_bytes(), Effort::Standard);
+        assert_eq!(report.media, "text/plain");
+        assert_eq!(report.verdict, Verdict::AiSignal);
+        assert!(report.warnings.is_empty());
+        // Same report as the text input: the mark stays, spans are offsets in the file.
+        assert_eq!(
+            report.to_json(),
+            check_text(&text, &Rules::embedded()).to_json()
         );
-        assert_eq!(latin1.verdict, Verdict::NoSignal);
-        assert_eq!(latin1.media, "application/octet-stream");
-        assert!(warns(&latin1, "text not analysed"));
-        // Latin-1 HTML: sniffed as text-like.
+    }
+
+    #[test]
+    fn text_without_a_known_encoding_is_read_as_windows_1252() {
+        // French, with accents (0xE8, 0xE9), a curly apostrophe (0x92) and an
+        // ellipsis (0x85), which only Windows-1252 has. The rule needs the accent.
+        let french = b"R\xE9ponse : en tant que mod\xE8le de langage, je n\x92ai pas d\x92avis\x85";
+        let report = check(french, Effort::Standard);
+        assert_eq!(report.media, "text/plain");
+        assert_eq!(report.verdict, Verdict::AiSignal);
+        assert_eq!(report.evidence[0].id, "text.self-disclosure");
+        assert_eq!(report.warnings, ["text decoded as Windows-1252"]);
+        // The span counts bytes of the decoded text: "é" takes two, the file has one.
+        let Some(Location::Span { start, text, .. }) = &report.evidence[0].location else {
+            panic!("a text span");
+        };
+        assert_eq!(*start, "Réponse : ".len());
+        assert_eq!(text, "en tant que modèle de langage, je");
+
+        // Same in a file sniffed as text-like.
         let html = check(
             b"<p>Tr\xE8s bien :contentReference[oaicite:0]{index=0}.</p>",
             Effort::Standard,
         );
         assert_eq!(html.media, "text/html");
-        assert_eq!(html.verdict, Verdict::NoSignal);
-        assert!(warns(&html, "text not analysed"));
+        assert_eq!(html.verdict, Verdict::AiSignal);
+        assert!(warns(&html, "text decoded as Windows-1252"));
+
         // Plain UTF-8 text: no warning.
         let utf8 = check("Très bien.".as_bytes(), Effort::Standard);
         assert_eq!(utf8.media, "text/plain");
         assert!(utf8.warnings.is_empty());
+    }
+
+    #[test]
+    fn windows_1252_table() {
+        let decode = |bytes: &[u8]| text::decode(bytes.to_vec(), false).unwrap();
+        assert_eq!(
+            decode(b"\x80 \x8C\x9C \x93x\x94 \x96 \x97 \x99 \x9F \xFF"),
+            ("€ Œœ “x” – — ™ Ÿ ÿ".to_string(), Some("Windows-1252"))
+        );
+        // The five undefined bytes become the control of the same value.
+        assert_eq!(
+            decode(b"\x81\x8D\x8F\x90\x9D").0,
+            "\u{81}\u{8D}\u{8F}\u{90}\u{9D}"
+        );
+    }
+
+    #[test]
+    fn binary_content_is_not_decoded_as_text() {
+        let not_text = |bytes: &[u8]| {
+            let report = check(bytes, Effort::Standard);
+            assert_eq!(report.media, "application/octet-stream", "{bytes:?}");
+            assert_eq!(report.verdict, Verdict::NoSignal);
+            assert!(report.evidence.is_empty());
+            assert_eq!(
+                report.warnings,
+                ["text not analysed: the content is not UTF-8"]
+            );
+        };
+        // Not UTF-8, with a NUL or another control byte: never read as Windows-1252,
+        // even around an artifact.
+        let artifact = ARTIFACT.as_bytes();
+        not_text(&[b"\xE8\x00 ", artifact].concat());
+        not_text(&[b"\xE8\x01 ", artifact].concat());
+        not_text(&[b"\xE8\x1B[0m ", artifact].concat());
+        let garbage: Vec<u8> = (0..4096u32).map(|i| (i * 197 + 131) as u8).collect();
+        not_text(&garbage);
+        // A UTF-16 byte order mark before content that is not UTF-16.
+        not_text(b"\xFF\xFE\x00\xD8\x41\x00"); // lone surrogate
+        not_text(b"\xFF\xFEa\x00b"); // half a code unit
+        not_text(b"\xFF\xFE\x00\x00a\x00\x00\x00"); // UTF-32 LE: NUL characters
+        not_text(&[b"\xFE\xFF", &garbage[..]].concat());
+        // Tab, LF, CR and FF are text.
+        let report = check(b"a\tb\r\nc\x0C\xE9", Effort::Standard);
+        assert_eq!(report.media, "text/plain");
+    }
+
+    #[test]
+    fn stream_gives_the_report_of_the_same_bytes() {
+        let rules = Rules::embedded();
+        let opts = Options::default();
+        let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
+        jpeg.extend_from_slice(XMP_AI.as_bytes());
+        for data in [&jpeg[..], ARTIFACT.as_bytes(), b""] {
+            let expected = check_bytes(data, &opts, &rules).to_json();
+            // The limit is the size of the data, or more.
+            for max_bytes in [data.len() as u64, DEFAULT_MAX_STREAM_BYTES, u64::MAX] {
+                let report = check_stream(data, max_bytes, &opts, &rules).unwrap();
+                assert_eq!(report.to_json(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn stream_over_the_limit_is_an_error() {
+        let rules = Rules::embedded();
+        let opts = Options::default();
+        // One byte over the limit.
+        let error = check_stream(
+            ARTIFACT.as_bytes(),
+            ARTIFACT.len() as u64 - 1,
+            &opts,
+            &rules,
+        )
+        .unwrap_err();
+        assert!(matches!(error, StreamError::TooLarge { max_bytes } if max_bytes == 43));
+        assert_eq!(
+            error.to_string(),
+            "stream is larger than the limit of 43 bytes"
+        );
+        // A source that never ends: reading stops one byte after the limit.
+        struct Counting(u64);
+        impl Read for Counting {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                buf.fill(b'x');
+                self.0 += buf.len() as u64;
+                Ok(buf.len())
+            }
+        }
+        let mut endless = Counting(0);
+        let error = check_stream(&mut endless, 1 << 20, &opts, &rules).unwrap_err();
+        assert!(matches!(error, StreamError::TooLarge { .. }));
+        assert_eq!(endless.0, (1 << 20) + 1);
+    }
+
+    #[test]
+    fn stream_that_fails_is_an_error() {
+        struct Broken;
+        impl Read for Broken {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("connection reset"))
+            }
+        }
+        let error =
+            check_stream(Broken, 1024, &Options::default(), &Rules::embedded()).unwrap_err();
+        assert_eq!(error.to_string(), "read: connection reset");
     }
 
     #[test]
@@ -585,6 +796,18 @@ mod tests {
         let report = check(&beyond, Effort::Standard);
         assert_eq!(report.media, "text/html");
         assert_eq!(report.verdict, Verdict::NoSignal);
+        assert!(warns(&report, "text not fully analysed"));
+
+        // UTF-16: the cut falls between the two halves of a surrogate pair.
+        let mut wide = utf16("", [0xFF, 0xFE], u16::to_le_bytes);
+        wide.extend(std::iter::repeat_n([b'x', 0], limit / 2 - 2).flatten());
+        let tail = format!("😀{ARTIFACT}");
+        wide.extend(tail.encode_utf16().flat_map(u16::to_le_bytes));
+        assert_eq!(&wide[limit - 2..limit], [0x3D, 0xD8]);
+        let report = check(&wide, Effort::Standard);
+        assert_eq!(report.media, "text/plain");
+        assert_eq!(report.verdict, Verdict::NoSignal);
+        assert!(warns(&report, "text decoded as UTF-16LE"));
         assert!(warns(&report, "text not fully analysed"));
     }
 }

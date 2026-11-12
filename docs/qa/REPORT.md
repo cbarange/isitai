@@ -77,12 +77,16 @@ Variables : `$B` binaire, `$C` corpus synthétique, `$S` corpus signé, `$V` var
 | 11 | Moyenne | R | **Paquet XMP cité dans un HTML** : `ai-signal` `strong` ; le même texte en Markdown donne `no-signal`. [O] | `$B $C/h_doc_xmp_in_script.html` |
 | 12 | Moyenne | S | **`algorithmicMedia` absent des règles** alors que la spec le liste comme source IA : `no-signal`, y compris dans un manifeste signé de confiance. [O] | `$B --anchors $A $V/v_signed_algorithmicMedia.jpg` |
 | 13 | Moyenne | B | **Manifeste invalide : aucun avertissement**, mais `generator` rempli à partir de ce manifeste. [O] | `$B --anchors $A $V/v_tampered_ai_pixel.jpg` |
-| 14 | Moyenne | B | **Texte non UTF-8 ou trop long : ignoré sans avertissement** (Latin-1, UTF-16, au-delà de 16 Mio). [O] | `$B $C/tp_latin1.txt` |
+| 14 | Moyenne | B | **Texte non UTF-8 ou trop long : ignoré sans avertissement** (Latin-1, UTF-16, au-delà de 16 Mio). [O] **Clos pour les encodages** : UTF-16 avec BOM et Windows-1252/Latin-1 sont décodés, avec l'avertissement « text decoded as … » ; `tp_latin1.txt` et `tp_utf16le_bom.txt` donnent `ai-signal`. Au-delà de 16 Mio : avertissement, texte non analysé en entier (`tp_over_text_limit.txt` reste en écart). | `$B $C/tp_latin1.txt` |
 | 15 | Basse | B | `Software: NovelAI` n'est lu qu'en tEXt, pas en iTXt ni zTXt. [O] | `$B $C/png_software_novelai_itxt.png` |
 | 16 | Basse | L | XMP non vu : iTXt compressé, paquet UTF-16, sidecar `.xmp`, paquet de plus de 256 Kio à cheval sur une fenêtre. [O] | `$B $C/xmp_packet_300k_straddles_chunk.png` |
 | 17 | Basse | S | **CLI.** `--json` (donné dans la spec) est pris pour un fichier, code 2. Un dossier en argument : `no-signal`, code 0. [O] | `$B $C/h_fr_prose.txt --json; echo $?` |
 | 18 | Basse | S | **Schéma de sortie différent de la spec** : `media` est un type MIME, pas de `summary`, champs `origin` et `warnings` en plus ; `generator` rempli même avec `no-signal`. [O] | `$B --anchors $A $V/v_signed_digitalArt.jpg` |
 | 19 | Basse | B | **Bindings.** La CLI ajoute l'avertissement « declared type differs », pas Node ni Python. Node : `checkText(null)` répond `no-signal` sans erreur. Un surrogate isolé est accepté par Node, refusé par Python. [O] | `bench/crosslang/diff.py` |
+
+Suivi (arbre de travail après `0c7e159`, même corpus synthétique de 224 fichiers) : `check_expected.py` passe de « 19 not ok » à « 17 not ok ». Les deux fichiers corrigés sont `tp_latin1.txt` et `tp_utf16le_bom.txt` (constat 14). Autres rapports modifiés, sans changement de verdict : `xmp_ai_utf16.xmp` est maintenant lu comme texte UTF-16 mais son paquet XMP n'est toujours pas vu (constat 16, toujours ouvert) ; `odd_1byte_ff.bin` (1 octet) et `trunc_jpeg_soi_only.jpg` (2 octets) sont rapportés `text/plain` avec « text decoded as Windows-1252 », car ils ne contiennent aucun octet de contrôle.
+
+L'entrée standard est lue par `isitai -` (limite `--max-bytes`, 256 Mio par défaut) ; les bindings ont `checkStream` / `check_stream`. `bench/crosslang/diff.py` ne couvre que les fonctions par chemin : l'égalité « flux = octets » est vérifiée par les tests unitaires de chaque front.
 
 ## Faux positifs de chaque règle texte sur du contenu humain
 

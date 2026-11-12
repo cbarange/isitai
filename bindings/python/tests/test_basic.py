@@ -1,3 +1,4 @@
+import io
 import os
 import struct
 import tempfile
@@ -71,6 +72,65 @@ class BasicTest(unittest.TestCase):
         r = isitai.check(html)
         self.assertEqual(r["media"], "text/html")
         self.assertEqual(r["verdict"], "ai-signal")
+
+    def test_stream_and_bytes_agree(self):
+        html = "<!DOCTYPE html>\n<p>Paris :contentReference[oaicite:0]{index=0}</p>".encode()
+        expected = isitai.check(html)
+        self.assertEqual(expected["verdict"], "ai-signal")
+        self.assertEqual(isitai.DEFAULT_MAX_STREAM_BYTES, 256 * 1024 * 1024)
+        self.assertEqual(isitai.check_stream(io.BytesIO(html)), expected)
+        self.assertEqual(isitai.check_stream(io.BytesIO(PNG)), isitai.check(PNG))
+        self.assertEqual(isitai.check_stream(io.BytesIO(b"")), isitai.check(b""))
+        # The limit is the size of the data: accepted.
+        self.assertEqual(isitai.check_stream(io.BytesIO(html), max_bytes=len(html)), expected)
+        # Options go to the check.
+        with self.assertRaisesRegex(ValueError, "unknown effort `turbo`"):
+            isitai.check_stream(io.BytesIO(html), effort="turbo")
+
+    def test_stream_over_the_limit_raises(self):
+        html = b"<p>Paris :contentReference[oaicite:0]{index=0}</p>"
+        with self.assertRaisesRegex(ValueError, "stream is larger than the limit of 49 bytes"):
+            isitai.check_stream(io.BytesIO(html), max_bytes=len(html) - 1)
+        with self.assertRaises(ValueError):
+            isitai.check_stream(io.BytesIO(html), max_bytes=-1)
+
+        class Endless:
+            """Never ends, like a hostile HTTP body. Counts what was asked of it."""
+
+            def __init__(self):
+                self.given = 0
+
+            def read(self, size):
+                self.given += size
+                return b"x" * size
+
+        endless = Endless()
+        with self.assertRaises(ValueError):
+            isitai.check_stream(endless, max_bytes=3 * 1024 * 1024)
+        self.assertEqual(endless.given, 3 * 1024 * 1024 + 1)
+
+    def test_stream_needs_only_read(self):
+        class OnlyRead:
+            """Like urllib3 and boto3 bodies: `read(amt)`, short reads, then b""."""
+
+            def __init__(self, data):
+                self.data = data
+
+            def read(self, amt):
+                chunk, self.data = self.data[:7], self.data[7:]
+                return chunk
+
+        self.assertEqual(isitai.check_stream(OnlyRead(PNG)), isitai.check(PNG))
+        with self.assertRaisesRegex(TypeError, "binary stream"):
+            isitai.check_stream(io.StringIO("text"))
+
+    def test_text_encodings_are_decoded(self):
+        latin1 = isitai.check("Très bien :contentReference[oaicite:0]{index=0}".encode("latin-1"))
+        self.assertEqual(latin1["verdict"], "ai-signal")
+        self.assertEqual(latin1["warnings"], ["text decoded as Windows-1252"])
+        utf16 = isitai.check(b"\xff\xfe" + "Très bien cite turn0search1".encode("utf-16-le"))
+        self.assertEqual(utf16["verdict"], "ai-signal")
+        self.assertEqual(utf16["warnings"], ["text decoded as UTF-16LE"])
 
     def test_missing_file_raises(self):
         with self.assertRaises(OSError):

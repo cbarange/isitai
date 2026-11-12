@@ -29,7 +29,8 @@ pip install --pre isitai
 Node.js:
 
 ```js
-const { checkText, checkFile } = require("isitai");
+// ES module (.mjs, or "type": "module"); with CommonJS use require("isitai") inside an async function.
+import { checkText, checkFile } from "isitai";
 
 checkText("Paris is big :contentReference[oaicite:0]{index=0}").verdict; // "ai-signal"
 (await checkFile("photo.jpg")).verdict;
@@ -51,7 +52,7 @@ isitai photo.jpg essay.txt
 isitai --anchors roots.pem photo.jpg
 ```
 
-Options apply to the files that follow them. Exit code: `0` nothing found, `1` AI signal or proof, `2` error (unknown option, unreadable file, directory, unusable `--anchors` file). Exit code `0` does not mean human-made.
+Options apply to the files that follow them. Exit code: `0` nothing found, `1` AI signal or proof, `2` error (unknown option, unreadable file, directory, unusable `--anchors` file, standard input over `--max-bytes`). Exit code `0` does not mean human-made.
 
 ### Trust anchors
 
@@ -105,6 +106,83 @@ When a file carries a C2PA manifest, the report lists the actions of its active 
 - A capture followed by an AI edit is AI-edited content, not a contradiction: when the chain declares an AI source, the manifest gives no capture evidence.
 - A manifest that fails validation gives a warning and no `generator`. It still lists its history.
 
+### Remote and streamed files
+
+isitai downloads nothing itself: it has no HTTP, S3, FTP or SFTP client, and it never touches the network. You open the remote file with the client you already use, and you give isitai the stream. Credentials, proxies, retries and timeouts stay in your code, and a URL sent by a user never becomes a request made by this library.
+
+| | Function | Input |
+|---|---|---|
+| Node.js | `await checkStream(readable, { maxBytes })` | a `Readable`, a web `ReadableStream`, any async iterable of `Buffer` or `Uint8Array` |
+| Python | `check_stream(fileobj, max_bytes=...)` | any binary object with `read(size)` |
+| Rust | `check_stream(reader, max_bytes, &opts, &rules)` | any `Read` |
+| CLI | `isitai -` | standard input |
+
+The stream is read whole into memory, then checked like a file: a signed file has to be read whole anyway, because C2PA validation hashes all of it and needs to move back and forth in it. Reading stops at the limit (`maxBytes`, `max_bytes`, `--max-bytes`; default 256 MiB, exported as `DEFAULT_MAX_STREAM_BYTES`), whatever size the source declares. A stream over the limit is an error (Node rejects with a `RangeError`, Python raises `ValueError`, the CLI exits with code 2): a cut file is never analysed, because its result would be wrong. Set the limit to the largest file your service accepts: the process holds a few times the size of the stream at the peak (measured on a 100 MB file, macOS arm64: about 220 MB for the CLI, 360 MB for Node, 430 MB for Python). For large files, download to a temporary file and use `checkFile` / `check_file`, which reads from disk without loading the file. In Node, `checkStream` collects the chunks asynchronously, then runs the check on the event loop, like `check`.
+
+HTTP, Node.js 18 or later:
+
+```js
+import { checkStream } from "isitai";
+
+const res = await fetch("https://example.com/photo.jpg");
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+const report = await checkStream(res.body, { maxBytes: 50 * 1024 * 1024 });
+```
+
+HTTP, Python:
+
+```python
+import urllib.request
+from isitai import check_stream
+
+with urllib.request.urlopen("https://example.com/photo.jpg", timeout=30) as res:
+    report = check_stream(res, max_bytes=50 * 1024 * 1024)
+```
+
+With `requests` (not tested): pass `stream=True`, set `response.raw.decode_content = True` so that a compressed response is decompressed, and give `response.raw`.
+
+S3, Node.js (AWS SDK v3):
+
+```js
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { checkStream } from "isitai";
+
+const { Body } = await new S3Client({}).send(new GetObjectCommand({ Bucket: "my-bucket", Key: "photo.jpg" }));
+const report = await checkStream(Body);
+```
+
+S3, Python (boto3):
+
+```python
+import boto3
+from isitai import check_stream
+
+body = boto3.client("s3").get_object(Bucket="my-bucket", Key="photo.jpg")["Body"]
+report = check_stream(body)
+```
+
+SFTP and FTP follow the same pattern: open the remote file with your client, pass the stream. With [paramiko](https://www.paramiko.org/) (example not tested):
+
+```python
+import paramiko
+from isitai import check_stream
+
+ssh = paramiko.SSHClient()
+ssh.load_system_host_keys()
+ssh.connect("files.example.com", username="me")
+with ssh.open_sftp().open("/uploads/photo.jpg", "rb") as remote:
+    report = check_stream(remote)
+```
+
+CLI, from any command that writes the file to standard output:
+
+```bash
+curl -sf https://example.com/photo.jpg | isitai -
+aws s3 cp s3://my-bucket/photo.jpg - | isitai --max-bytes 50000000 -
+```
+
+In a shell script, set `set -o pipefail`: when the download fails, isitai receives an empty or cut input and still prints a report (`no-signal` with exit code 0 for an empty input). Standard input has no file name, so the CLI does not compare an extension with the content there.
+
 ### Browser / WebAssembly
 
 The core also runs in a browser, with no server. `bindings/wasm` compiles it to `wasm32-unknown-unknown` and exposes `check_text_json(text)` and `check_bytes_json(bytes, effort?, trust_anchors_pem?)`, which return the same JSON as the other bindings (there is no file-path function). The demo page in `site/` uses it: the file is read and checked inside the page and is never uploaded.
@@ -123,9 +201,11 @@ python3 -m http.server -d site 8000     # then open http://localhost:8000/
 - **C2PA Content Credentials** (via `c2pa-rs`): JPEG, PNG, WebP, AVIF, HEIC, GIF, TIFF, SVG, MP4, MOV, MP3, WAV, PDF. No network access, ever.
 - **IPTC `DigitalSourceType`** in XMP metadata, in any format.
 - **PNG text chunks** written by local generators (Stable Diffusion WebUI, ComfyUI, InvokeAI, NovelAI). The keyword alone is not enough: the value must look like the generator's output. Compressed text chunks are not read.
-- **Text artifacts** left by copy-paste from AI assistants, in text input and inside text-like files (plain text, HTML, XML, SVG, shell scripts), up to 16 MiB of UTF-8. A warning says when text was not analysed, or not fully.
+- **Text artifacts** left by copy-paste from AI assistants, in text input and inside text-like files (plain text, HTML, XML, SVG, shell scripts), up to 16 MiB. A warning says when text was not analysed, or not fully.
 
-Text spans in `evidence[].location` are UTF-8 byte offsets; use `location.text` instead of slicing your string.
+Text files are read as UTF-8 (with or without a byte order mark), as UTF-16 LE or BE when they start with a byte order mark, and otherwise as Windows-1252 (which covers Latin-1), but only when the content is clearly text: no NUL byte and no control byte other than tab, line feed, carriage return and form feed in the first 8 KiB. A warning names the encoding when it is not UTF-8: `text decoded as UTF-16LE`, `text decoded as UTF-16BE`, `text decoded as Windows-1252`. Anything else is not read as text and gives the warning `text not analysed: the content is not UTF-8`.
+
+Text spans in `evidence[].location` are UTF-8 byte offsets; use `location.text` instead of slicing your string. For a UTF-16 or Windows-1252 file, they are offsets in the decoded text, not in the file; the UTF-16 byte order mark is not part of the decoded text.
 
 ## Known limits
 
@@ -137,7 +217,8 @@ Text spans in `evidence[].location` are UTF-8 byte offsets; use `location.text` 
 - **A leaked signing key defeats any trust list.** Whoever holds the private key of a certificate that chains to a trusted root can sign anything. For old manifests (C2PA claim version 1) certificate expiry does not limit this, because the time-stamp authority is not checked there.
 - **With `--anchors` / `trust_anchors_pem`, every root in your bundle is trusted for signers and for time-stamps.**
 - **A capture declared only by an ingredient is not a proof.** A photo re-saved by a trusted tool (for example a Google Pixel photo processed by Google Photos) gives `no-signal`: ingredient manifests are not verified.
-- **Not read yet:** compressed PNG text chunks, UTF-16 or Latin-1 text, XMP sidecar files.
+- **Not read yet:** compressed PNG text chunks, XMP sidecar files, UTF-16 text without a byte order mark, UTF-32.
+- **The encoding of old text files is assumed, not detected.** Text that is neither UTF-8 nor UTF-16 is read as Windows-1252. A file in another 8-bit encoding (Latin-2, Cyrillic, Shift JIS) is still searched for the ASCII artifacts, but rules with accented letters cannot match it. A very short binary file without control bytes can be reported as `text/plain`.
 - **Slow input:** an MP4 with about 100 000 empty boxes takes about 25 s (time spent in the C2PA parser). Set a timeout when you check untrusted uploads.
 
 See `docs/qa/REPORT.md` for the test corpus and the open findings.
