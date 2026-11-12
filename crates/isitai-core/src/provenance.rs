@@ -12,32 +12,46 @@ pub struct Provenance {
     pub history_summary: Option<HistorySummary>,
 }
 
-/// Official C2PA trust lists, used when the caller gives no anchors: the roots of
-/// manifest signers and the roots of time-stamp authorities. Vendored, never fetched:
-/// see `trust/SOURCE.md` for their origin and `scripts/update_trust_list.sh`.
+/// Trust lists used when the caller gives no anchors. Vendored, never fetched: see
+/// `trust/SOURCE.md` for their origin and `scripts/update_trust_list.sh`.
+/// Official C2PA lists: the roots of manifest signers, the roots of time-stamp authorities.
 const C2PA_TRUST_LIST: &str = include_str!("../trust/C2PA-TRUST-LIST.pem");
 const C2PA_TSA_TRUST_LIST: &str = include_str!("../trust/C2PA-TSA-TRUST-LIST.pem");
+/// Interim list, older and frozen: roots of signers and of time-stamp authorities.
+const C2PA_INTERIM_TRUST_LIST: &str = include_str!("../trust/C2PA-INTERIM-TRUST-LIST.pem");
+
+/// Labels (`trust_uri`) of the embedded lists. c2pa names the label of the anchors a
+/// certificate chains to: this is how [`trusted_under`] tells the lists apart.
+/// `system_anchors` is the label c2pa itself gives to the `trust_anchors` key.
+const OFFICIAL: &str = "system_anchors";
+const INTERIM: &str = "interim_anchors";
 
 /// C2PA settings shared by [`read`] and [`validate_trust_anchors`]: no network, trust
 /// checked against `anchors_pem` when given, else against the embedded lists.
 /// c2pa keeps two sets of roots: `manifest` for signers and `tsa` for time-stamps. A
 /// time-stamp whose authority is not under a `tsa` root is ignored, and the signing
-/// certificate is then judged at today's date. The caller's bundle fills both sets and
-/// the embedded lists are left out: c2pa adds every bundle it is given to its anchors.
+/// certificate is then judged at today's date. By default each set holds an official
+/// list and the interim list. The caller's bundle fills both sets and the embedded
+/// lists are left out: c2pa adds every bundle it is given to its anchors.
 fn context(anchors_pem: Option<&str>) -> Result<Context, String> {
-    let (signers, time_stamps) = match anchors_pem {
-        Some(pem) => (pem, pem),
-        None => (C2PA_TRUST_LIST, C2PA_TSA_TRUST_LIST),
+    let entry = |kind: &str, pem: &str, list: Option<&str>| json!({ "trust_kind": kind, "trust_anchors": pem, "trust_uri": list });
+    let (signers, more) = match anchors_pem {
+        Some(pem) => (pem, vec![entry("tsa", pem, None)]),
+        None => (
+            C2PA_TRUST_LIST,
+            vec![
+                entry("manifest", C2PA_INTERIM_TRUST_LIST, Some(INTERIM)),
+                entry("tsa", C2PA_TSA_TRUST_LIST, Some(OFFICIAL)),
+                entry("tsa", C2PA_INTERIM_TRUST_LIST, Some(INTERIM)),
+            ],
+        ),
     };
-    // The signer bundle goes through `trust_anchors`, which c2pa turns into a
+    // The first signer bundle goes through `trust_anchors`, which c2pa turns into a
     // `manifest` entry of `anchors`: it is the only key c2pa refuses when no
     // certificate can be loaded. An entry of `anchors` is taken unchecked.
     let settings = json!({
         "verify": { "remote_manifest_fetch": false, "ocsp_fetch": false, "verify_trust": true },
-        "trust": {
-            "trust_anchors": signers,
-            "anchors": [{ "trust_anchors": time_stamps, "trust_kind": "tsa" }]
-        }
+        "trust": { "trust_anchors": signers, "anchors": more }
     });
     Context::new()
         .with_settings(settings.to_string().as_str())
@@ -83,12 +97,24 @@ pub fn read<R: Read + Seek + Send>(
         Err(e) => return Err(e.to_string()),
     };
     let store: Value = serde_json::from_str(&reader.json()).map_err(|e| e.to_string())?;
-    Ok(interpret(&store, reader.validation_state(), dst_rules))
+    let embedded_lists = anchors_pem.is_none();
+    Ok(interpret(
+        &store,
+        reader.validation_state(),
+        embedded_lists,
+        dst_rules,
+    ))
 }
 
 /// What a manifest store (the JSON of `c2pa::Reader`) establishes, given its
 /// validation state. `None` when the store has no active manifest.
-fn interpret(store: &Value, state: ValidationState, dst_rules: &Dst) -> Option<Provenance> {
+/// `embedded_lists`: the store was validated against the embedded trust lists.
+fn interpret(
+    store: &Value,
+    state: ValidationState,
+    embedded_lists: bool,
+    dst_rules: &Dst,
+) -> Option<Provenance> {
     let label = store.get("active_manifest").and_then(Value::as_str)?;
     let (history, truncated) = history(store);
     let mut warnings = Vec::new();
@@ -108,8 +134,11 @@ fn interpret(store: &Value, state: ValidationState, dst_rules: &Dst) -> Option<P
     // A manifest that fails validation establishes nothing: neither who made the
     // file, nor anything about the chain.
     let valid = state != ValidationState::Invalid;
+    let lists = (embedded_lists && state == ValidationState::Trusted)
+        .then(|| trusted_under(&store["validation_results"], label))
+        .flatten();
     Some(Provenance {
-        evidence: evidence(store, label, state, dst_rules),
+        evidence: evidence(store, label, state, lists.as_deref(), dst_rules),
         generator: valid
             .then(|| generator(&store["manifests"][label]))
             .flatten(),
@@ -146,6 +175,63 @@ fn not_trusted(results: &Value) -> &'static str {
     } else {
         "C2PA manifest is valid but not fully trusted"
     }
+}
+
+/// Which embedded trust lists make the active manifest `label` trusted, from the
+/// validation results of the store: "signer in the interim trust list", with the list
+/// of the time-stamp authority when c2pa checked one (C2PA claim version 2).
+/// `None` unless c2pa names exactly one embedded list for the signer: no guess.
+/// The label of a list is only found in the explanation text of c2pa 0.92.0.
+fn trusted_under(results: &Value, label: &str) -> Option<String> {
+    let signature = format!("self#jumbf=/c2pa/{label}/c2pa.signature");
+    let signature = signature.as_str();
+    let success = results["activeManifest"]["success"].as_array()?;
+    // Explanations of the statuses `code` that c2pa logged for the signature.
+    let explanations = |code: &'static str| {
+        let of_signature = success
+            .iter()
+            .filter(move |s| s["code"] == code && s["url"] == signature);
+        of_signature.map(|s| s["explanation"].as_str().unwrap_or_default())
+    };
+    let name = |list: &str| match list {
+        OFFICIAL => Some("official C2PA"),
+        INTERIM => Some("interim"),
+        _ => None,
+    };
+    // The one list all explanations name: `None` when there is none or they differ.
+    let only = |mut lists: Vec<Option<&'static str>>| {
+        lists.dedup();
+        match lists[..] {
+            [list] => list,
+            _ => None,
+        }
+    };
+
+    let signer = only(
+        explanations("signingCredential.trusted")
+            .map(|text| {
+                let list = text.strip_prefix("signing certificate trusted, found in [")?;
+                name(list.strip_suffix("] trust anchors")?)
+            })
+            .collect(),
+    )?;
+    // "legacy timestamp cert trusted: ..." (claim version 1) names no list: c2pa
+    // checks that time-stamp against no list. Any other text must name a list.
+    let time_stamps: Vec<_> = explanations("timeStamp.trusted")
+        .filter(|text| !text.starts_with("legacy timestamp cert trusted: "))
+        .map(|text| {
+            let named = text.strip_prefix("timestamp cert trusted: ")?;
+            // The list comes last, after a name taken from the certificate.
+            name(named.rsplit_once(", trust list: ")?.1)
+        })
+        .collect();
+    if time_stamps.is_empty() {
+        return Some(format!("signer in the {signer} trust list"));
+    }
+    let time_stamp = only(time_stamps)?;
+    Some(format!(
+        "signer in the {signer} trust list, time-stamp authority in the {time_stamp} trust list"
+    ))
 }
 
 /// Name of the tool that wrote the manifest.
@@ -190,14 +276,24 @@ fn source_type(action: &Value) -> Option<String> {
 /// of the active manifest: declared by its own actions or, capped at `Strong`,
 /// inherited from the manifest of an ingredient. Ingredient manifest trust is not
 /// verified, so an inherited type is never a proof.
-fn evidence(store: &Value, label: &str, state: ValidationState, dst_rules: &Dst) -> Vec<Evidence> {
+/// `lists`: the trust lists a trusted manifest rests on ([`trusted_under`]), when known.
+fn evidence(
+    store: &Value,
+    label: &str,
+    state: ValidationState,
+    lists: Option<&str>,
+    dst_rules: &Dst,
+) -> Vec<Evidence> {
     let manifest = &store["manifests"][label];
     let strength = match state {
         ValidationState::Trusted => Strength::Proof,
         ValidationState::Valid => Strength::Strong,
         ValidationState::Invalid => Strength::Weak,
     };
-    let state_name = format!("{state:?}").to_lowercase();
+    let mut state_name = format!("{state:?}").to_lowercase();
+    if let Some(lists) = lists {
+        state_name = format!("{state_name}, {lists}");
+    }
     // Own types first: for the same value, the declared one wins over the inherited one.
     let own = actions(manifest)
         .filter_map(|(assertion, action)| Some((assertion, action, source_type(action)?, false)));
@@ -607,7 +703,7 @@ mod tests {
     }
 
     fn read_store(store: &Value, state: ValidationState) -> Provenance {
-        interpret(store, state, &Rules::embedded().dst).unwrap()
+        interpret(store, state, true, &Rules::embedded().dst).unwrap()
     }
 
     /// (id, origin, strength) of each piece of evidence.
@@ -833,7 +929,8 @@ mod tests {
 
     #[test]
     fn store_without_active_manifest_is_no_provenance() {
-        assert!(interpret(&json!({ "manifests": {} }), Trusted, &Rules::embedded().dst).is_none());
+        let dst = &Rules::embedded().dst;
+        assert!(interpret(&json!({ "manifests": {} }), Trusted, true, dst).is_none());
     }
 
     #[test]
@@ -898,44 +995,158 @@ zGxQnM2hCA==
     fn embedded_trust_lists_are_usable() {
         assert!(context(None).is_ok());
         // A truncated copy would still load: a list must not be near empty.
-        for list in [C2PA_TRUST_LIST, C2PA_TSA_TRUST_LIST] {
+        for list in [
+            C2PA_TRUST_LIST,
+            C2PA_TSA_TRUST_LIST,
+            C2PA_INTERIM_TRUST_LIST,
+        ] {
             assert_eq!(validate_trust_anchors(list), Ok(()));
             assert!(list.matches("-----BEGIN CERTIFICATE-----").count() >= 10);
         }
     }
 
-    /// (kind, bundle) of every anchor entry c2pa holds, sorted: c2pa keeps no order.
-    fn bundles(anchors_pem: Option<&str>) -> Vec<(String, String)> {
+    /// (kind, label, bundle) of an anchor entry of c2pa.
+    type Bundle = (String, Option<String>, String);
+
+    /// Every anchor entry c2pa holds, sorted: c2pa keeps no order.
+    fn bundles(anchors_pem: Option<&str>) -> Vec<Bundle> {
         let ctx = context(anchors_pem).unwrap();
         let anchors = ctx.settings().trust.anchors.clone().unwrap_or_default();
         let mut out: Vec<_> = anchors
             .into_iter()
-            .map(|a| (format!("{:?}", a.trust_kind), a.trust_anchors))
+            .map(|a| (format!("{:?}", a.trust_kind), a.trust_uri, a.trust_anchors))
             .collect();
         out.sort();
         out
     }
 
-    fn pair(kind: &str, bundle: &str) -> (String, String) {
-        (kind.to_string(), bundle.to_string())
+    fn bundle(kind: &str, label: Option<&str>, pem: &str) -> Bundle {
+        (kind.to_string(), label.map(str::to_string), pem.to_string())
     }
 
     #[test]
-    fn default_anchors_are_the_two_embedded_lists() {
+    fn default_anchors_are_the_official_lists_and_the_interim_list() {
         assert_eq!(
             bundles(None),
             [
-                pair("Manifest", C2PA_TRUST_LIST),
-                pair("TSA", C2PA_TSA_TRUST_LIST)
+                bundle("Manifest", Some(INTERIM), C2PA_INTERIM_TRUST_LIST),
+                bundle("Manifest", Some(OFFICIAL), C2PA_TRUST_LIST),
+                bundle("TSA", Some(INTERIM), C2PA_INTERIM_TRUST_LIST),
+                bundle("TSA", Some(OFFICIAL), C2PA_TSA_TRUST_LIST),
             ]
         );
     }
 
     #[test]
-    fn given_anchors_replace_both_embedded_lists() {
+    fn given_anchors_replace_every_embedded_list() {
         assert_eq!(
             bundles(Some(TEST_ROOT)),
-            [pair("Manifest", TEST_ROOT), pair("TSA", TEST_ROOT)]
+            [
+                bundle("Manifest", Some(OFFICIAL), TEST_ROOT),
+                bundle("TSA", None, TEST_ROOT)
+            ]
+        );
+    }
+
+    /// Shapes copied from `c2pa::Reader::json()` on real files (Firefly, sora.MP4,
+    /// Google Pixel, an Adobe PDF with ingredients) read with the embedded lists.
+    #[test]
+    fn trusted_evidence_names_the_embedded_lists_it_rests_on() {
+        let status = |code: &str, manifest: &str, explanation: &str| {
+            json!({
+                "code": code,
+                "url": format!("self#jumbf=/c2pa/{manifest}/c2pa.signature"),
+                "explanation": explanation
+            })
+        };
+        let signer = |manifest: &str, list: &str| {
+            let text = format!("signing certificate trusted, found in [{list}] trust anchors");
+            status("signingCredential.trusted", manifest, &text)
+        };
+        let time_stamp = |text: &str| status("timeStamp.trusted", "active", text);
+        let legacy = time_stamp("legacy timestamp cert trusted: Adobe Timestamp Responder");
+        // Detail of the evidence of a store with these statuses of the active manifest.
+        let detail = |success: Value, state: ValidationState, embedded_lists: bool| {
+            let mut s = store(
+                json!([{ "action": "c2pa.created", "digitalSourceType": format!("{DST}trainedAlgorithmicMedia") }]),
+                json!([]),
+            );
+            s["validation_results"] = json!({
+                "activeManifest": { "success": success, "informational": [], "failure": [] },
+                // The list of an ingredient says nothing about the active manifest.
+                "ingredientDeltas": [{ "validationDeltas": { "success": [signer("generator", INTERIM)] } }]
+            });
+            let p = interpret(&s, state, embedded_lists, &Rules::embedded().dst).unwrap();
+            p.evidence[0].detail.clone()
+        };
+        let plain = "C2PA c2pa.created action declares digitalSourceType trainedAlgorithmicMedia (manifest trusted)";
+        let with = |lists: &str| plain.replace("trusted)", &format!("trusted, {lists})"));
+
+        assert_eq!(
+            detail(json!([legacy, signer("active", INTERIM)]), Trusted, true),
+            with("signer in the interim trust list")
+        );
+        assert_eq!(
+            detail(json!([legacy, signer("active", OFFICIAL)]), Trusted, true),
+            with("signer in the official C2PA trust list")
+        );
+        let by = |list: &str| {
+            time_stamp(&format!(
+                "timestamp cert trusted: Some TSA, trust list: {list}"
+            ))
+        };
+        assert_eq!(
+            detail(json!([by(OFFICIAL), signer("active", OFFICIAL)]), Trusted, true),
+            with("signer in the official C2PA trust list, time-stamp authority in the official C2PA trust list")
+        );
+        assert_eq!(
+            detail(json!([by(INTERIM), signer("active", OFFICIAL)]), Trusted, true),
+            with("signer in the official C2PA trust list, time-stamp authority in the interim trust list")
+        );
+        // A certificate name cannot pass for the list: the list comes last.
+        let forged = time_stamp(&format!(
+            "timestamp cert trusted: X, trust list: {OFFICIAL}, trust list: {INTERIM}"
+        ));
+        assert_eq!(
+            detail(json!([forged, signer("active", OFFICIAL)]), Trusted, true),
+            with("signer in the official C2PA trust list, time-stamp authority in the interim trust list")
+        );
+
+        // Not established: nothing is added.
+        let other_url = json!({
+            "code": "signingCredential.trusted",
+            "url": "self#jumbf=/c2pa/active/c2pa.assertions/cawg.identity",
+            "explanation": format!("signing certificate trusted, found in [{INTERIM}] trust anchors")
+        });
+        let reworded = status(
+            "signingCredential.trusted",
+            "active",
+            "trusted by interim_anchors",
+        );
+        for success in [
+            json!([]),
+            json!([legacy]),
+            json!([signer("generator", INTERIM)]),
+            json!([other_url]),
+            json!([reworded]),
+            json!([signer("active", "another list")]),
+            json!([signer("active", OFFICIAL), signer("active", INTERIM)]),
+            json!([signer("active", OFFICIAL), by("another list")]),
+            json!([signer("active", OFFICIAL), time_stamp("time-stamp trusted")]),
+            json!([signer("active", OFFICIAL), by(OFFICIAL), by(INTERIM)]),
+            json!("broken"),
+        ] {
+            assert_eq!(detail(success, Trusted, true), plain);
+        }
+        // With the caller's anchors `system_anchors` is the caller's bundle, not a list.
+        assert_eq!(
+            detail(json!([signer("active", OFFICIAL)]), Trusted, false),
+            plain
+        );
+        // The lists explain a trusted manifest only.
+        assert_eq!(
+            detail(json!([signer("active", OFFICIAL)]), Valid, true),
+            plain.replace("trusted", "valid")
         );
     }
 

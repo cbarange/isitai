@@ -1,6 +1,6 @@
 //! Usage: isitai [--anchors roots.pem] [--effort fast|standard] [--max-bytes N] [--text "string"] [FILE|-...]
 //! Options apply to the files that follow them. `--anchors` replaces the embedded
-//! C2PA trust lists, for signers and for time-stamps.
+//! trust lists (official C2PA lists and interim list), for signers and for time-stamps.
 //! `-` reads standard input, whole and into memory, up to `--max-bytes` (default 256 MiB).
 //! Prints one JSON report per input. Exit: 0 nothing found (which does not mean
 //! human-made), 1 AI signal or proof, 2 error.
@@ -139,7 +139,10 @@ fn usage(msg: &str) -> ExitCode {
     );
     eprintln!("Options apply to the files that follow them.");
     eprintln!("- reads standard input, whole and into memory, up to --max-bytes (default {DEFAULT_MAX_STREAM_BYTES}).");
-    eprintln!("--anchors replaces the embedded C2PA trust lists (signers and time-stamps).");
+    eprintln!(
+        "--anchors replaces the embedded trust lists (official C2PA lists and interim list),"
+    );
+    eprintln!("for signers and for time-stamps.");
     eprintln!("Exit code: 0 nothing found, 1 AI signal or proof, 2 error.");
     eprintln!("Exit code 0 does not mean human-made: it means no proof and no signal was found.");
     ExitCode::from(2)
