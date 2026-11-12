@@ -155,7 +155,9 @@ jobs:
       CRATE_MAX_KB: "700"
       NPM_MAX_KB: "500"
       SDIST_MAX_KB: "900"
-      WHEEL_MAX_KB: "4096"
+      # Baseline mesurée le 2026-11-12 : 4 967 Ko (c2pa + crypto natif, strip et LTO actifs).
+      # Marge de 5 %. Un wheel au-delà signale une dépendance ajoutée, pas un arrondi.
+      WHEEL_MAX_KB: "5200"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

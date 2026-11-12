@@ -123,8 +123,18 @@ est une régression tout court.
   contrôlés avant l'envoi. Un paquet hors budget arrête la release avant qu'elle ne devienne
   irréversible.
 
-Budgets actuels, provisoires jusqu'à la première mesure réelle : crate 700 Ko, npm 500 Ko,
-sdist 900 Ko, wheel 4 Mo, binaire natif 4 Mo. Ils vivent dans les workflows, pas dans un
+Budgets, ancrés sur la première mesure réelle (`v0.1.0-alpha.0`, ubuntu-24.04, 2026-11-12) :
+
+| Paquet | Mesuré | Budget | Marge |
+|---|---|---|---|
+| crate | 118 Ko | 700 Ko | ×5,9 |
+| npm (méta, sans binaire) | 3 Ko | 500 Ko | très large |
+| sdist | 131 Ko | 900 Ko | ×6,9 |
+| wheel | 4 967 Ko | 5 200 Ko | 5 % |
+
+Le wheel est le seul paquet volumineux : il embarque `c2pa` et son implémentation crypto native.
+Son budget est donc serré, et c'est voulu — c'est lui qui signalera l'ajout d'une dépendance
+lourde. Les trois autres budgets sont larges parce qu'ils ne mesurent presque rien. Ils vivent dans les workflows, pas dans un
 fichier partagé, parce qu'un budget de taille se lit à côté de ce qu'il mesure.
 
 Ce qui réduit réellement la taille, dans cet ordre : `strip = true` et `lto = true` (déjà dans
