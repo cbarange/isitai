@@ -11,14 +11,18 @@ on:
 permissions: {}
 
 concurrency:
+  # Une PR se réécrit vite : annuler ses runs intermédiaires est utile. Un push sur main,
+  # non — annuler son run laisse « main est verte » sans preuve, et chaque annulation
+  # envoie une notification d'échec.
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   rust:
+    timeout-minutes: 40
     name: Rust (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -42,6 +46,7 @@ jobs:
       - run: python3 scripts/check_versions.py
 
   bindings:
+    timeout-minutes: 40
     name: Bindings (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -83,6 +88,7 @@ jobs:
           "$PY" -m unittest discover -s tests -v
 
   cross-language:
+    timeout-minutes: 30
     name: CLI = Node = Python
     runs-on: ubuntu-24.04
     permissions:
@@ -121,6 +127,7 @@ jobs:
             "$RUNNER_TEMP/c2pa/fixtures/test_cert_root_bundle.pem" "$RUNNER_TEMP/c2pa/fixtures" "$RUNNER_TEMP/signed"
 
   hygiene:
+    timeout-minutes: 15
     name: Hygiène (workflows, licences, secrets)
     runs-on: ubuntu-24.04
     permissions:
@@ -145,6 +152,7 @@ jobs:
           GITLEAKS_ENABLE_SUMMARY: "true"
 
   package-size:
+    timeout-minutes: 30
     name: Taille des paquets
     runs-on: ubuntu-24.04
     permissions:
@@ -213,6 +221,7 @@ jobs:
           PY
 
   bindings-node-versions:
+    timeout-minutes: 25
     name: Node ${{ matrix.node }}
     runs-on: ubuntu-24.04
     permissions:
@@ -239,6 +248,7 @@ jobs:
           npm test
 
   bindings-python-versions:
+    timeout-minutes: 30
     name: Python ${{ matrix.python }}
     runs-on: ubuntu-24.04
     permissions:

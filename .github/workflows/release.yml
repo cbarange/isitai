@@ -22,6 +22,7 @@ env:
 
 jobs:
   versions:
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -39,6 +40,7 @@ jobs:
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then echo "npm=next" >> "$GITHUB_OUTPUT"; else echo "npm=latest" >> "$GITHUB_OUTPUT"; fi
 
   node-build:
+    timeout-minutes: 45
     name: Node ${{ matrix.target }}
     needs: versions
     strategy:
@@ -92,6 +94,7 @@ jobs:
           if-no-files-found: error
 
   python-wheels:
+    timeout-minutes: 45
     name: Wheel ${{ matrix.target }} ${{ matrix.manylinux }}
     needs: versions
     strategy:
@@ -129,6 +132,7 @@ jobs:
           if-no-files-found: error
 
   python-sdist:
+    timeout-minutes: 20
     needs: versions
     runs-on: ubuntu-24.04
     permissions:
@@ -149,6 +153,7 @@ jobs:
           if-no-files-found: error
 
   size-gate:
+    timeout-minutes: 10
     name: Budget de taille avant publication
     needs: [node-build, python-wheels, python-sdist]
     runs-on: ubuntu-24.04
@@ -192,6 +197,7 @@ jobs:
           PY
 
   publish-npm:
+    timeout-minutes: 20
     needs: [versions, node-build, size-gate]
     runs-on: ubuntu-24.04
     environment: release
@@ -238,6 +244,7 @@ jobs:
           npm publish --provenance --access public --tag "$NPM_TAG"
 
   publish-pypi:
+    timeout-minutes: 15
     needs: [versions, python-wheels, python-sdist, size-gate]
     runs-on: ubuntu-24.04
     environment: release
@@ -260,6 +267,7 @@ jobs:
           password: ${{ secrets.PIPY }}
 
   publish-crates:
+    timeout-minutes: 15
     needs: versions
     runs-on: ubuntu-24.04
     environment: release
