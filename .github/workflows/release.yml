@@ -155,7 +155,9 @@ jobs:
     permissions:
       contents: read
     env:
-      WHEEL_MAX_KB: "4096"
+      # Baseline mesurée le 2026-11-12 : 4 967 Ko (c2pa + crypto natif, strip et LTO actifs).
+      # Marge de 5 %. Un wheel au-delà signale une dépendance ajoutée, pas un arrondi.
+      WHEEL_MAX_KB: "5200"
       SDIST_MAX_KB: "900"
       NODE_MAX_KB: "4096"
     steps:
