@@ -221,7 +221,10 @@ mod tests {
     #[test]
     fn pivot_pair_needs_the_connector() {
         let ids = rhetoric("Cette approche n'est pas suffisante. Elle reste utile.");
-        assert!(ids.is_empty(), "un motif sans connecteur ne doit rien produire");
+        assert!(
+            ids.is_empty(),
+            "un motif sans connecteur ne doit rien produire"
+        );
     }
 
     #[test]
@@ -232,17 +235,24 @@ mod tests {
 
     #[test]
     fn three_part_cadence_is_found() {
-        assert_eq!(rhetoric("Il analyse, traite et livre."), vec!["rhetoric.triptych"]);
+        assert_eq!(
+            rhetoric("Il analyse, traite et livre."),
+            vec!["rhetoric.triptych"]
+        );
     }
 
     #[test]
     fn a_four_item_list_is_not_a_triptych() {
-        assert!(rhetoric("Il analyse, trie, traite et livre.").is_empty());
+        assert!(
+            rhetoric("Il analyse, trie, traite et livre.").is_empty()
+        );
     }
 
     #[test]
     fn plain_human_text_produces_nothing() {
-        assert!(rhetoric("Bonjour, je rentre demain soir. On se voit samedi ?").is_empty());
+        assert!(
+            rhetoric("Bonjour, je rentre demain soir. On se voit samedi ?").is_empty()
+        );
     }
 
     /// The invariant this layer exists to keep: whatever it finds, the verdict is the
