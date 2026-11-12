@@ -1,0 +1,92 @@
+S3 Browser, the long-standing Windows client for Amazon S3, was renamed CS Browser in July 2026 (version 13.5.5). Same product, same publisher (Netsdk Software), same site. This page compares it with S3 Explorer, using each vendor's published information as of October 2026.
+
+At a glance
+
+| | CS Browser (formerly S3 Browser) 13.6.3 | S3 Explorer 0.3.9 |
+|---|---|---|
+| Platforms | Windows only (7 SP1 to 11, Windows Server) | Windows, macOS, Linux (x64 and ARM64) |
+| Free edition allowed for | Personal use only | Everyone |
+| Free edition: S3-compatible accounts | Up to 2 | Up to 5 connection profiles |
+| Free edition: concurrent transfers | Up to 2 per queue | Same setting as the paid edition (1 to 30) |
+| Free edition: features | Some reserved for Pro (see below) | All features |
+| Paid licence | $49.99 per computer (list price $59.99) | 11.50 € lifetime, or 1.99 €/month |
+| Updates included | 1 year, then a new purchase | Lifetime (lifetime licence) |
+| Devices per licence | 1 computer, transferable | Up to 5 active devices (lifetime) |
+| Provider presets | Custom endpoint for S3-compatible services | 25 presets + custom endpoint |
+
+Sources: the CS Browser Free vs Pro page and Pro pricing, and the S3 Explorer licence page.
+
+The free editions
+
+This is where the two differ most.
+
+CS Browser Free is licensed for personal use only: any commercial, business, government or military use requires Pro. Its free edition is also limited to:
+
+2 S3-compatible accounts;
+2 concurrent uploads, downloads or tasks per queue;
+no copy, move or download of an entire bucket;
+no applying a storage class or server-side encryption to an entire bucket;
+no restoring object versions, and no downloading or deleting several versions at once;
+CloudFront invalidation of a single file or folder, default compression level only.
+
+S3 Explorer Free has no usage restriction and includes every feature. The only limits are 5 saved connection profiles and an occasional reminder; a licence removes both.
+
+Price
+
+For a team of five on Windows, CS Browser Pro costs $49.99 + 4 × $46.99 = $237.95, with one year of updates. A professional using the free edition is outside its licence terms.
+
+The same team on S3 Explorer can stay on the free edition if five profiles each are enough, or buy five lifetime licences at 11.50 € each, updates included.
+
+Platforms
+
+CS Browser is a Windows application. On macOS or Linux, there is no native version.
+
+S3 Explorer runs on Windows, macOS (Intel and Apple Silicon) and Linux (AppImage, .deb, .rpm), on x64 and ARM64. A team with mixed machines uses the same client and the same workflow everywhere.
+
+S3-compatible providers
+
+Both connect to Amazon S3 and to S3-compatible services through a custom endpoint.
+
+S3 Explorer adds 25 presets that fill in the endpoint format, regions and addressing mode: Cloudflare R2, Backblaze B2, Wasabi, MinIO, Ceph, Google Cloud Storage, DigitalOcean Spaces, OVHcloud, Scaleway, Hetzner, Garage, SeaweedFS and more. See the provider guides.
+
+Where CS Browser goes further
+
+CS Browser has been developed since 2008 and covers more of the AWS-specific management surface. Features it offers that S3 Explorer does not, as of version 0.3.9:
+
+bucket lifecycle rules, bucket policies, CORS and static website hosting;
+CloudFront distribution management and invalidation;
+a folder sync tool and command-line tools for automation;
+client-side compression and AES-256 encryption;
+restore from S3 Glacier and Deep Archive;
+ACL editing, including in bulk.
+
+If your work is mostly AWS administration from a Windows workstation, these matter.
+
+Where S3 Explorer goes further
+
+Cross-platform, with one licence covering several devices.
+A local index for instant search and navigation in buckets with millions of objects, without re-listing.
+Provider presets and adaptive compatibility: the client adapts to how each S3-compatible server responds, instead of assuming AWS behaviour.
+Built-in editors and previews: text, images, video and audio.
+Per-request metrics with cost estimates.
+
+Which one to choose
+
+Windows only, heavy AWS administration (lifecycle, policies, CloudFront, sync scripts): CS Browser Pro.
+macOS or Linux: S3 Explorer.
+Professional use without paying for a licence: S3 Explorer Free.
+Several S3-compatible providers (R2, B2, MinIO, Wasabi…): S3 Explorer.
+Very large buckets to browse and search: S3 Explorer.
+
+FAQ
+
+Is S3 Browser discontinued?
+No. It was renamed CS Browser in July 2026 and is still maintained; version 13.6.3 was released on October 3, 2026.
+
+Is there an S3 Browser for Mac or Linux?
+No, CS Browser is Windows-only. S3 Explorer runs natively on macOS and Linux.
+
+Can I use S3 Browser for free at work?
+Not under its licence: the free edition is for personal use only. S3 Explorer's free edition has no such restriction.
+
+Comparison based on CS Browser 13.6.3 and S3 Explorer 0.3.9, from each vendor's published information on October 15, 2026. S3 Explorer is developed by the publisher of this site. CS Browser and S3 Browser are names of Netsdk Software FZE, which is not affiliated with this site. To report an error, open an issue.

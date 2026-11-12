@@ -1,0 +1,83 @@
+In short: from 12 January 2027, Article 29 of the EU Data Act forbids cloud
+providers from charging EU customers for the egress involved in leaving. Everyday
+egress stays billable. What disappears is the financial penalty — what remains is
+the work: knowing what your buckets contain, who can read them, and what they
+cost per prefix. Three commands cover most of it, and a bucket browser that shows
+them covers the rest.
+
+What actually changes
+
+The regulation (2023/2854) has applied since 12 September 2025. Since that date,
+switching charges are capped at the provider's real cost, notice periods cannot
+exceed two months, and a 30-day transition window is mandatory. On 12 January
+2027 the switching charge drops to zero.
+
+Read the scope before planning a migration budget around it:
+
+Covered: exporting your data and metadata when you switch provider, or when
+  you run in parallel across providers.
+Not covered: ordinary internet egress, cross-region transfers, CDN pulls and
+  daily traffic. Those stay on the invoice.
+Not covered either: fixed-term commitments. Reserved capacity and savings
+  plans survive the law; proportionate early-termination penalties remain lawful.
+
+So the deadline removes a bill, not a project. The project is inventory.
+
+The three inventories
+
+1. What you are paying for and cannot see. Interrupted multipart uploads keep
+their parts. They are billed as storage and absent from every object listing,
+which is how a bucket looks empty and bills like it is full. This is the single
+most common finding on an inherited account.
+
+2. What exists more than once. Non-current object versions are billable and
+invisible in the default view. On a bucket with versioning enabled by policy and
+never expired, this is often the largest line of the bill.
+
+3. Who may read what. Tag-based policies let you express tenancy without
+enumerating prefixes — but tags do not appear in  , and
+  is not supported on   or  . A policy
+you cannot inspect is a policy you cannot migrate.
+
+Do this now, not in December 2027
+
+ 
+
+Then:
+
+1. Abort what is orphaned, and add an  
+   lifecycle rule so it does not come back. The rule does not clean the past; it
+   only stops the future.
+2. Expire non-current versions with a deliberate retention window, not a
+   guess.
+3. Tag your buckets for cost allocation, so egress can be attributed before
+   anyone asks you to.
+4. Test a second provider while nothing forces you to. One bucket, one key,
+   one file with a checksum. That twenty minutes replaces a quarter of
+   architecture review — and it is the only way to learn whether "S3-compatible"
+   means compatible with your client or with someone's 2023 SDK.
+
+Where S3 Explorer helps
+
+The gap the deadline exposes is not storage — it is visibility. A viewer that
+lists objects and stops there leaves you exactly where the regulation found you.
+
+In S3 Explorer, each connection carries a test that reports the bucket count
+before you browse anything; bucket cards flag incomplete uploads older than a
+threshold you set, with key, age and size; Metadata and Versions tabs show
+what a listing hides; and a per-request metrics panel makes the traffic you
+pay for visible while you work. Profiles are per connection, so a second provider
+is a two-minute test rather than a migration.
+
+It is a desktop client for Windows, macOS and Linux — download it, or see
+how it handles incomplete uploads and
+what object storage really costs.
+
+Sources
+
+Regulation (EU) 2023/2854 (Data Act), Article 29 — switching charges removed
+  from 12 January 2027; applicable since 12 September 2025.
+European Commission, Data Act — entry into force 11 January 2024,
+  application 12 September 2025.
+The full analysis, with the dated figures and the scope caveats:
+  S3 in 2027: the egress bill changes on 12 January.

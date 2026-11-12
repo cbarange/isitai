@@ -31,3 +31,4 @@ bindings/*/README.md
 
 # WebAssembly engine of the demo page, built by site/build.sh
 site/pkg/
+bench/golden/set/

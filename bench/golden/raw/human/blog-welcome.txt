@@ -1,0 +1,81 @@
+Object storage is the quiet backbone of most modern stacks: buckets behind the
+uploads, the backups, the data lake, the static site, the logs nobody reads until
+something breaks. Yet the tooling and the advice around it are still shaped by a
+world where one team managed one bucket in one region on one provider.
+
+That world is gone. A single engineer now holds credentials for AWS S3, Cloudflare
+R2, Backblaze B2, MinIO, Garage and a NAS running Ceph — often in the same week.
+The questions that come with that are specific and badly served: why a request
+that two policies allow still returns  , what actually happens on day
+eight of a seven-day presigned URL, whether an interrupted multipart upload is
+still being billed. Most pages answering them were written for a scale the reader
+does not have, or for a version of the service that no longer exists.
+
+What this blog covers
+
+Five threads, and a tag for each:
+
+Access — policies, roles, session limits, and the difference between what a
+  principal can list and what it can read.
+Cost — storage classes, request pricing, egress, and the charges that only
+  appear on the invoice three weeks later.
+Performance — pagination, parallelism, checksums, the difference between a
+  slow listing and a slow network.
+Operations — the day-two problems: orphaned parts, lifecycle rules, keys
+  that rotate and break everything signed with them.
+Clients — what to use to look inside a bucket when the console is not the
+  right tool.
+
+How each article is made
+
+Every article follows the same discipline, because a technical blog is only worth
+reading if you can check it:
+
+Primary sources only. Vendor documentation, the actual error string, the
+  pricing page as it reads today — not another blog post summarising a blog post.
+Every number is dated and attributed. Prices move; a figure without a date
+  is a rumour with a decimal point.
+Errors are pasted as they come out. Not paraphrased, not tidied. The exact
+  string is what someone will grep for at 2 a.m.
+A diagram explains the mechanism, not decorates the page. If a sentence can
+  be replaced by a picture of the request flow, it is.
+No invented figures. Where a number cannot be sourced, the article says so
+  or leaves it out. A missing measurement is better than a plausible one.
+
+What we measure, and why
+
+Since November 2026 this blog records four events: a page view, an article viewed,
+an article read to the end, and a click towards the product. That is the whole
+list. Autocapture, session recording, page-leave tracking and performance sampling
+are switched off on purpose — a blog of text has no use for them, and the point is
+to know whether an article helped, not to watch someone read it.
+
+The honest reason for measuring at all is that it changes what gets written. If an
+article is opened often and finished rarely, the title promised something the
+opening did not deliver. If it is finished and nobody clicks through, the link to
+the product sits in the wrong place, or the product page answers a different
+question. Both are fixable, but only if someone looks.
+
+What this is not
+
+It is not a newsletter, and nothing here sits behind an email form. It is not
+vendor content either: we build S3 Explorer, a
+desktop client for S3-compatible storage, and every article that mentions it says
+so at the bottom. The product earns its place by being useful inside the article,
+not by being advertised around it.
+
+Where to start
+
+If you are new here, three articles cover the ground most people need first:
+
+S3 Explorer walkthrough: zero to browsing in five minutes
+  — the shape of the problems this blog keeps coming back to.
+Presigned URLs expire at seven days. Then what?
+  — the limit nobody reads until a customer cannot download a file.
+The real cost of S3: 8 providers compared, egress included
+  — where the invoice actually comes from.
+
+New articles appear two to three times a week, chosen from what readers finished,
+what search engines ask and no page answers, and which topic finally gives a tag
+enough material to deserve its own page. There is an RSS feed if you
+would rather be told than reminded.

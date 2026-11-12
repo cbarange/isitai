@@ -1,0 +1,85 @@
+A cleanup script lists a bucket, deletes what it finds, prints  , and leaves 97% of the objects in place. Nothing errored. The script asked for the bucket contents once, received a page of 1,000 entries, and treated that page as the bucket. Every S3-compatible endpoint behaves this way, and the response says so — in  , a field most code never reads.
+
+The short version
+
+One list request returns at most 1,000 entries. A bucket holding ten million objects takes ten thousand requests to walk.
+A folder in the response is one of those 1,000 entries. A page can come back with 10 folders and 990 files, and still be full.
+The end of a listing is signalled by  . A page shorter than   is not the end.
+Asking for   returns 1,000 entries on a real endpoint and 2,501 on the mock server most tests use — so a passing test proves nothing about production.
+Ten million objects is 10,000 billed requests to enumerate: $0.045 on Cloudflare R2 at $4.50 per million Class A operations. The script that misses objects costs more than the listing.
+
+What actually happens
+
+  answers with a page. The API reference opens with "Returns some or all (up to 1,000) of the objects in a bucket with each request", and the   parameter repeats it: "By default, the action returns up to 1,000 key names. The response might contain fewer keys but will never contain more."
+
+So 1,000 is not a default you can raise. It is the width of the pipe. Two fields describe what came back:  , the objects, and  , the number of entries the page actually carried. A third,  , says whether another page exists, and   — "obfuscated and is not a real key" — carries the position forward.
+
+The ceiling costs nothing per object: AWS's own guidance says list performance "is not substantially affected by the total number of keys in your bucket". A million keys and a thousand keys answer in the same time. What changes is how many round trips you need, and each one is billed.
+
+ 
+
+Now the part that breaks code. Add   and the response rolls up everything under a common prefix into a single   entry, the thing a GUI draws as a folder. The API reference is explicit that the rollup is not free: "Each rolled-up result counts as only one return against the MaxKeys value." A page is therefore up to 1,000 entries, not 1,000 objects, and the mix is whatever the key order produces.
+
+Where it bites
+
+I filled a bucket with a known layout and paged through it on two endpoints: SeaweedFS 4.50 ( , S3 gateway on a local port) and moto 5.2.5, the Python mock that a large share of S3 test suites run against. Both were queried with   1.44.0 on 11 November 2026.
+
+| Endpoint | 2,501 keys under   |   |   over   | Token returned |
+|---|---|---|---|---|
+| SeaweedFS 4.50 | 3 pages: 1,000 / 1,000 / 501 | 1,000 entries,   | 990   + 10  ,   1,000,   | the last key,   |
+| moto 5.2.5 | 3 pages: 1,000 / 1,000 / 501 | 2,501 entries,   | identical: 990 + 10,   1,000 | 32 hex characters |
+
+ 
+
+The most expensive bug is a comparison against  . The page over   came back with 990 objects and 10 folders. It is completely full —   is 1,000 — but   is 990, so   exits after one request. In this layout the 40 folders that were never listed hold another 2,000 keys. The script reports success because no call failed. Both endpoints produced this page identically; it is not a quirk, it is the contract.
+
+above 1,000 is a request, not a setting. SeaweedFS clamped it to 1,000 and set  . moto returned all 2,501 entries in one response and set   — behaviour AWS's documentation rules out. A test suite on the mock sees a complete listing from a single call, then production hands the same code 1,000 entries and a token it ignores.
+
+returns an empty page with   on both endpoints — the probe for "how many objects are here" reads  , gets zero, and reports an empty bucket with no error.
+
+Order is UTF-8 binary, not sensible. The five keys  ,  ,  ,  ,   came back as  . Date-suffixed keys sort wrong at the month boundary (  before   before  ), and numeric IDs sort as text. Anything that pages by "last key seen" inherits that order, so a resumable job restarts in the wrong place when the naming scheme is numeric.
+
+The token looks like a key on one endpoint and a hash on the other. SeaweedFS answered   — the last key of the page. moto answered a 32-character hex string. Code that treats the token as  , or persists it across an upgrade, works on the self-hosted server and fails on AWS. AWS documents the token as obfuscated; its shape is not part of the contract.
+
+Browsing is not free either. AWS bills LIST requests in the same class as PUT, and the pricing page states that browsing the console "incur[s] charges for GET, LIST, and other requests that are made to facilitate browsing". A person clicking through folders generates exactly the calls a script does — the S3 Explorer walkthrough shows that browse call by call — and the invoice consequence is set out in the request charges that make up most of an S3 bill.
+
+Doing it right
+
+1. Loop on   and nothing else. The SDK paginator does it for you; hand-rolled loops should copy its shape exactly.
+
+ 
+
+2. Count entries with  , never with  . The difference between the two is exactly the number of folders on that page.
+
+3. Use   when the job must be restartable. AWS documents it as "where you want Amazon S3 to start listing from" and accepts "any key in the bucket", so a crashed job can resume from a key you persisted, without storing an opaque token that may not survive a client upgrade.
+
+ 
+
+4. Set   below the ceiling when you need predictable pages. A page size of 500 makes retries cheaper and keeps a single slow response from stalling the whole walk. Above 1,000 is silently clamped on real endpoints.
+
+5. Prove the cap on the endpoint you deploy against, not on the mock. One run of the probe above answers what no test double can: whether this provider honours  , whether prefixes share the budget, and what its token looks like.
+
+6. Verify a deletion or backup job against an independent count. Log the entries processed and compare with the number the provider reports elsewhere: a job that lists 1,000 entries from a 30,000-object bucket and logs   is indistinguishable from success in every log you have.
+
+How S3 Explorer fits
+
+Folder navigation in a desktop client is the same   mechanism — each click is another LIST, and a folder holding more than 1,000 entries needs more than one. S3 Explorer's per-request metrics dashboard counts the API calls a session generated ( ,   and the rest), computed locally, so a browse that looks like one click can be read as the number of requests it really was. The test connection step reports how many buckets the credentials can see before a profile is saved, and multiple connection profiles let the same folder be opened on AWS and on a self-hosted endpoint from one window. S3 Explorer runs on Windows, macOS and Linux.
+
+Checklist
+
+[ ] Every list call loops on  , or uses the SDK paginator.
+[ ] No code ends a loop by comparing   with  , or with 1,000.
+[ ] Entry counts use  , folders included.
+[ ] Nothing parses or reconstructs  .
+[ ] Ordering assumptions are written down: UTF-8 binary, so numeric suffixes sort as text.
+[ ]   is set explicitly and never above 1,000.
+[ ] At least one test runs against a real endpoint; the mock-only test is labelled as such.
+[ ] Cleanup and backup jobs log the entries they processed and compare against an independent count.
+
+Sources
+
+Amazon S3 — ListObjectsV2: "up to 1,000" per request;   "will never contain more";   "less than or equal to the MaxKeys field"; "Each rolled-up result counts as only one return against the MaxKeys value";   "obfuscated and is not a real key";   starts listing after the given key.
+Amazon S3 — Listing object keys programmatically: a page of up to 1,000 keys with a truncation indicator; results "always returned in UTF-8 binary order"; list performance "not substantially affected by the total number of keys".
+Amazon S3 — pricing: LIST requests are billed with PUT, COPY and POST; console browsing "incur[s] charges for GET, LIST, and other requests that are made to facilitate browsing".
+Cloudflare R2 — pricing, page last updated 30 October 2026: Class A operations $4.50 per million, and   is listed as a Class A operation.
+Measured 11 November 2026 against SeaweedFS 4.50 and moto 5.2.5 with   1.44.0; the probe is   in this repository, and the bucket layout it builds is 3,547 objects, 2,501 of them under  .

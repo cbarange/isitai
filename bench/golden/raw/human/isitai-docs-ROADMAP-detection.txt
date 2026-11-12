@@ -1,0 +1,317 @@
+Feuille de route détection — recherche du 2026-11-12
+
+Document de recherche. Aucun code n'a été modifié. Il complète  .
+
+Convention de marquage :
+
+[V] : vérifié ce jour sur une source primaire (URL citée, ou API interrogée).
+[J] : jugement du rédacteur, non mesuré.
+non trouvé : cherché, pas de chiffre dans les sources lues. Rien n'est estimé à la place.
+
+1. Résumé
+
+1. Le cœur reste déterministe, hors ligne, sous 10 Mo. Tout ce qui a besoin d'un modèle vit dans un paquet optionnel séparé.
+2. Un moteur d'inférence coûte à lui seul plus que le budget : l'archive officielle d'ONNX Runtime 1.31.1 pèse de 9 à 81 Mo compressée selon la plateforme [V]. C'est la contrainte qui structure toute la feuille de route.
+3. Trois niveaux d'effort suffisent :   (aujourd'hui),   (décodeurs de watermark ouverts),   (classifieurs statistiques). Un seul algorithme par couche ; le choix se fait par une liste de couches.
+4. Un classifieur ne produit jamais   ni  . Il produit un score et un verdict distinct,  .
+5. Auteur mixte : la seule mesure fiable aujourd'hui est l'historique C2PA (actions et ingrédients). Le reste est probabiliste et fragile.
+6. Capture d'écran d'une image ChatGPT : le C2PA est perdu, le watermark SynthID est conçu pour survivre (OpenAI le dit [V]), mais son détecteur n'existe qu'en ligne chez OpenAI. Hors ligne, le niveau   répondra  . Un classifieur peut donner un score ; après re-numérisation, la détection publiée va de presque intacte à presque nulle selon le détecteur.
+7. Entrées distantes : pas de client réseau dans la lib. L'appelant télécharge ; la lib peut au plus fournir un tampon vers fichier temporaire.
+8. Premier gain sans modèle ni moteur : le watermark   de Stable Diffusion et SDXL, dont la charge utile est fixe et publique [V]. Il ne résiste ni au redimensionnement ni au recadrage [V].
+
+2. Contraintes transverses
+
+2.1 Le moteur d'inférence
+
+| Fait | Valeur | Source |
+|---|---|---|
+| Archive ONNX Runtime 1.31.1, Linux x64 | 10 Mo (tgz) | [V]   |
+| Idem, Linux arm64 | 9 Mo (tgz) | [V] idem |
+| Idem, macOS arm64 | 35 Mo (tgz) | [V] idem |
+| Idem, Windows x64 / arm64 | 79 / 81 Mo (zip) | [V] idem |
+| Taille décompressée de la bibliothèque seule | non mesuré | — |
+| Crate   : dernière version | 2.0.0-rc.15, pas de version stable | [V] API crates.io |
+|   : features   (par défaut),  ,   | présentes | [V] https://github.com/pykeio/ort/blob/main/Cargo.toml |
+|   : moteurs alternatifs  ,   (Rust pur),   | dossiers   présents | [V] https://github.com/pykeio/ort/tree/main/backends |
+|   (Rust pur) | 0.23.10, publié le 2026-11-05 | [V] API crates.io |
+
+Conséquences :
+
+est activé par défaut dans   : il télécharge ONNX Runtime à la compilation. À désactiver, comme   l'a été pour  . [V pour le défaut, J pour la consigne]
+Les archives contiennent en-têtes et fichiers annexes ; la taille réelle de la bibliothèque est à mesurer. Même dans le meilleur cas, elle double le paquet. [J]
+éviterait la bibliothèque native, mais sa couverture des opérateurs des modèles visés (ModernBERT, ViT, convolutions 1D d'AudioSeal) n'est pas vérifiée. C'est l'objet du spike de l'incrément 3. [J]
+
+2.2 Le décodage des médias
+
+Le cœur ne décode aujourd'hui aucun pixel ni aucun échantillon audio. Tout algorithme au niveau du signal impose un décodeur.
+
+| Média | Décodeur Rust | État |
+|---|---|---|
+| Image | crate   (JPEG, PNG, WebP) | surcoût binaire à mesurer [J] |
+| Audio |   0.6.1, Rust pur, licence MPL-2.0 | [V] API crates.io ; surcoût à mesurer |
+| Vidéo | pas de décodeur H.264/H.265/AV1 Rust pur mûr à ma connaissance | [J] non vérifié ; en pratique ffmpeg |
+
+2.3 La règle « la lib ne devine pas »
+
+La spec dit : « Elle ne devine pas », et le critère 1 exige zéro faux   fort sur le corpus humain. Un classifieur réglé à 1 % de faux positifs viole ce critère par construction. La section 4 traite ce point : les classifieurs n'alimentent pas les verdicts existants.
+
+3. Algorithmes candidats par média
+
+Colonne « Cœur Rust via   CPU » : oui = un fichier ONNX existe et a été vu ; à convertir = poids PyTorch seulement ; non = bloqué (licence, taille, clés).
+
+3.1 Texte
+
+| Nom | Principe | Besoins à l'exécution | Précision publiée | Robustesse |   CPU |
+|---|---|---|---|---|---|
+| GPTTrace Ettin-150M v5e | encodeur 150 M distillé d'un 1 B, classification | ONNX int8 144 Mo ; CC-BY-SA-4.0 ; anglais seulement ; tokenizer ; coût CPU non trouvé | RAID, jeu caché, TPR à 1 % FPR : 0,989 toutes attaques, 0,995 sans attaque [V] | paraphrase : 0,931 ; synonymes : 0,987 ; homoglyphes : 0,995 (RAID, 1 % FPR) [V]. Hors domaine : MAGE paraphrasé, AUROC 0,756 (carte du modèle) [V] | oui ( ) [V] |
+| Tabularis ModernBERT R1.1 | ModernBERT-base affiné | safetensors 570 Mo ; MIT | RAID 1 % FPR sans attaque : 0,972 [V] | paraphrase 0,896 ; homoglyphes 0,884 [V] | à convertir |
+| BERT-tiny-RAID (4 M) | très petit encodeur | safetensors 16 Mo ; MIT | RAID 1 % FPR sans attaque : 0,808 [V] | paraphrase 0,506 ; homoglyphes 0,115 [V] | à convertir |
+| e5-small-lora | e5-small + LoRA | taille non trouvée (API en erreur) | RAID 1 % FPR sans attaque : 0,828 [V] | paraphrase 0,614 ; homoglyphes 0,0001 [V] | non vérifié |
+| Binoculars, Fast-DetectGPT | perplexité croisée de deux LLM | deux LLM de plusieurs Go | déjà établi : nettement plus faibles sous attaque | — | non (taille) |
+| SynthID-Text | watermark à la génération | code Apache-2.0 [V], mais clés du fournisseur | — | — | non (clés) |
+| textGrain (OpenAI) | watermark de texte, ChatGPT dans l'UE, option dans l'API | détecteur réservé par OpenAI à des organisations éligibles [V] | — | « même après quelques modifications » ; perdu après forte paraphrase ou traduction [V] | non (pas de détecteur public) |
+| C2PA texte | manifeste signé | feature  , +0,13 Mo (bench) | déterministe | perdu au copier-coller [J] | sans objet |
+
+Sources : fichiers   de https://github.com/liamdugan/raid/tree/main/leaderboard/submissions (lus via l'API GitHub) ; https://huggingface.co/nakas/gpttrace-ettin150-text-v5e ; API Hugging Face pour tailles et licences ; https://help.openai.com/en/articles/8912793-provenance-signals-in-openai-generated-content pour textGrain.
+
+À retenir :
+
+Les scores RAID sont dans le domaine d'entraînement. GPTTrace est entraîné sur RAID train [V, carte du modèle]. Le chiffre honnête hors domaine est l'AUROC de 0,756 sur MAGE paraphrasé.
+Le français n'est pas couvert. Le modèle retenu est déclaré   [V]. Des jeux multilingues existent : MULTITuDE, 74 081 textes, 11 langues, sans le français [V] https://arxiv.org/abs/2310.13606 ; SemEval-2024 tâche 8, piste multilingue, meilleure exactitude 95,99 obtenue par un système à base de LLM [V] https://arxiv.org/abs/2404.14183. Aucun petit modèle ouvert multilingue avec un TPR à 1 % FPR publié n'a été trouvé.
+Le modèle retenu est très récent. Publié le 2026-10-21, 0 téléchargement relevé par l'API, un seul auteur [V]. Il n'a pas de recul d'usage.
+Les petits modèles (16 Mo) s'effondrent sous homoglyphes et paraphrase. Un niveau « classifieur léger » ne vaut pas la peine. [J, appuyé sur les chiffres ci-dessus]
+Les homoglyphes et les caractères de largeur nulle se normalisent par règle, avant le modèle. C'est déterministe et quasi gratuit. [J]
+
+3.2 Image
+
+| Nom | Principe | Besoins à l'exécution | Précision publiée | Robustesse |   CPU |
+|---|---|---|---|---|---|
+| invisible-watermark  , charge SD/SDXL | watermark fréquentiel, sans modèle. Charge fixe et publique :   dans le script de référence SD 1 ; 48 bits   dans le pipeline SDXL de   [V] | aucun modèle, aucun moteur ; MIT [V] ; décodage 150–200 ms en 1080p, 60 ms en 600×600, CPU, en Python [V] | tableau réussite/échec seulement [V] | résiste à JPEG, bruit, luminosité ; échoue au redimensionnement 50 %, au recadrage 7×5, à la rotation [V] | sans objet : DWT + DCT à écrire en Rust |
+| TrustMark (Adobe) | watermark invisible, 100 bits, décodeur neuronal | décodeur Q : 45 Mo en ONNX (dépôt tiers) [V] ; MIT [V] ; crate Rust officielle   sur   2.0.0-rc.10 [V] ; coût CPU non trouvé | non extrait de l'article | « entraîné pour résister » à des perturbations (article), chiffres non extraits ; capture d'écran : non trouvé | oui |
+| Community Forensics (ViT-S) | classifieur ViT-S entraîné sur 2,7 M d'images de 4 803 générateurs [V] | safetensors 83 Mo ; MIT [V] ; coût CPU non trouvé | non extrait (tableau mAP de l'article) | non extrait | à convertir |
+| Détecteurs ViT/Swin communautaires (Organika, SMOGY…) | classifieur affiné | 88 à 337 Mo en ONNX [V] | cartes non auditées | non trouvé | non : CC-BY-NC [V] |
+| DRCT, AIDE, DIRE… (recherche) | classifieurs divers | non relevé | RRDataset : meilleure exactitude globale 89,59 % (DRCT-ConvB, après affinage sur ce jeu) [V] | voir section 6 | non relevé |
+| TruFor | localisation de retouche (empreinte de bruit + RGB) | poids de recherche | chiffres non extraits | — | licence absente sur GitHub [V] ; à considérer non redistribuable [J] |
+| SynthID-Image | watermark Google ; présent sur les images de ChatGPT, de Codex et de l'API OpenAI [V] | détecteur non public ; vérification en ligne seulement | TPR à 0,1 % FPR supérieur à 99 % en agrégé, d'après un résumé de recherche, non relu dans l'article | « conçu pour résister » aux retouches légères, au recadrage, aux captures d'écran ; perdu après fort recadrage ou forte compression (OpenAI) [V] | non (clés) |
+
+Sources : https://github.com/adobe/trustmark (README racine et  ) ; https://huggingface.co/jean-is/trustmark-onnx ; https://github.com/ShieldMnt/invisible-watermark ; https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion_xl/watermark.py ; https://github.com/CompVis/stable-diffusion/blob/main/scripts/txt2img.py ; https://help.openai.com/en/articles/8912793-provenance-signals-in-openai-generated-content ; https://arxiv.org/abs/2411.04125 ; https://huggingface.co/OwensLab/commfor-model-384 ; https://arxiv.org/abs/2509.09172 ; https://arxiv.org/abs/2510.09263.
+
+À retenir :
+
+Le watermark SD/SDXL est le seul signal de pixels propre à un générateur, lisible sans modèle. Il est désactivable par l'utilisateur et absent de beaucoup d'interfaces (ComfyUI, A1111 : non vérifié). Sa portée réelle est à mesurer sur le corpus. [J]
+Un watermark ouvert n'est pas une preuve d'IA. TrustMark sert à Adobe pour rattacher une image à ses Content Credentials ; il marque aussi des photos. Le décoder donne « ce fichier porte un identifiant TrustMark », pas « IA ». La résolution de l'identifiant vers un manifeste demande un service en ligne. [J]
+Les classifieurs d'images généralisent mal. AIGIBench : plusieurs détecteurs tombent sous 2 % de détection des images IA après une simple compression JPEG [V] https://arxiv.org/abs/2505.12335. Deepfake-Eval-2024 : l'AUC des modèles ouverts chute de 45 % pour l'image, 48 % pour l'audio, 50 % pour la vidéo par rapport aux bancs académiques [V] https://arxiv.org/abs/2503.02857.
+La comparaison ImageDetectBench recommande les détecteurs à watermark plutôt que passifs quand les deux s'appliquent (résumé de recherche, non relu) https://arxiv.org/abs/2411.13553.
+
+3.3 Audio
+
+| Nom | Principe | Besoins à l'exécution | Précision publiée | Robustesse |   CPU |
+|---|---|---|---|---|---|
+| AudioSeal (Meta) | watermark de parole, détection localisée à l'échantillon | détecteur 33 Mo ; MIT [V] ; ONNX tiers 33 Mo [V] ; décodage audio + rééchantillonnage à 16 kHz | sans retouche : TPR 1,00, FPR 0,00 ; moyenne sur 15 retouches : TPR 0,98, FPR 0,04 (seuil de meilleure exactitude, tableau 3 de l'article) [V]. TPR à 1 % FPR : non publié sous cette forme | MP3, AAC, rééchantillonnage : 1,00/0,00 ; bruit blanc : 0,86/0,04 ; passe-haut : 0,82/0,60 [V]. Détection « jusqu'à deux ordres de grandeur » plus rapide que WavMark [V] | oui (conversion tierce, à valider) |
+| WavMark, SilentCipher | watermarks audio | MIT [V] | non relevé | non relevé | à convertir |
+| AASIST / AASIST-L | classifieur anti-usurpation sur forme d'onde | 297 K / 85 K paramètres ; MIT [V] | EER 0,83 % / 0,99 % sur ASVspoof 2019 LA [V] | AASIST n'est pas dans l'étude « in the wild ». Un modèle voisin sur forme d'onde, RawNet2, y passe de 3,15 % à 37,82 % d'EER ; moyenne de tous les modèles testés : 60,10 % ; hausse « jusqu'à 1000 % » [V] | à convertir |
+| wav2vec2 affinés (communautaires) | grand encodeur + tête | 360 Mo à 1,2 Go [V] | cartes non auditées | non trouvé | oui pour certains (ONNX 360 Mo) |
+| SynthID audio | watermark inaudible sur l'audio de ChatGPT et de l'API OpenAI [V] | détecteur non public | — | — | non (clés) |
+| Détecteurs de musique IA | classifieur sur spectrogramme | non relevé | non relevé | non relevé | non relevé |
+
+Sources : https://arxiv.org/abs/2401.17264 ; https://huggingface.co/facebook/audioseal ; https://huggingface.co/synath/audioseal-onnx ; https://arxiv.org/abs/2110.01200 ; https://arxiv.org/abs/2203.16263.
+
+À retenir : en audio, le petit classifieur existe (85 K paramètres) mais les scores de laboratoire de cette famille ne tiennent pas en conditions réelles. Le seul candidat défendable est AudioSeal, qui ne détecte que l'audio marqué par un outil qui l'intègre. [J]
+
+3.4 Vidéo
+
+| Nom | Principe | Besoins à l'exécution | Précision publiée | Robustesse |   CPU |
+|---|---|---|---|---|---|
+| VideoSeal (Meta) | watermark par image, propagé dans le temps | checkpoint 157 Mo ; MIT [V] ; décodage vidéo obligatoire | non trouvé (résumé qualitatif) | « plus robuste que les références » sous distorsions difficiles [V], sans chiffre dans le résumé | à convertir ; bloqué par le décodage |
+| Classifieurs vidéo ouverts | image par image ou spatio-temporels | centaines de Mo, GPU en pratique [J] | AUC en baisse de 50 % en conditions réelles [V] | — | non |
+| C2PA + métadonnées conteneur ( ,  ) | déterministe | 0 | déterministe | perdu au ré-encodage [J] | sans objet |
+
+Sources : https://arxiv.org/abs/2412.09492 ; https://huggingface.co/facebook/video_seal ; https://arxiv.org/abs/2503.02857.
+
+3.5 Documents
+
+Pas d'algorithme propre. Un document est une composition : métadonnées du conteneur, texte, images embarquées. [J]
+
+| Couche | Ce qu'elle fait | Coût |
+|---|---|---|
+| C2PA PDF | déjà en place | 0 |
+| Métadonnées ( ,  ) | prévu en v0.2 dans la spec | 0 |
+| Extraction du texte, puis couches texte | règles d'artefacts, puis classifieur au niveau   | extracteur PDF/ZIP à mesurer |
+| Extraction des images, puis couches image | chaque image est vérifiée comme un fichier | idem |
+
+4. Modèle d'options proposé
+
+4.1 Niveaux d'effort
+
+| Niveau | Principe | Coût attendu | Modèles | Verdicts possibles |
+|---|---|---|---|---|
+|   (défaut) | lecture d'octets, sans décoder le média | moins de 10 ms par fichier, cache chaud [V, bench] | aucun | les cinq actuels |
+|   |   + décodage du média + watermarks ouverts | de 0,1 à 1 s par élément [J, non mesuré] ; repère : 60 à 200 ms pour   en Python [V] | 0 (image) ; 33 Mo (audio) | les cinq actuels |
+|   |   + un classifieur statistique | de 0,1 s à quelques secondes [J, non mesuré] | 83 à 144 Mo par média | les cinq, plus   |
+
+Couches exécutées, par média et par niveau :
+
+| Média |   |   ajoute |   ajoute |
+|---|---|---|---|
+| Texte |   ;   si la feature est active | rien |   (anglais), score par paragraphe |
+| Image |  ,   (XMP, chunks PNG, EXIF) |   ( , charge SD/SDXL) ;   seulement si le spike le retient |  , seulement si l'incrément 6 passe |
+| Audio |  ,   (ID3, RIFF, Vorbis) |   | rien |
+| Vidéo |  ,   ( , XMP) | rien | rien |
+| Document |  ,   | couches   sur chaque image embarquée | couches   sur le texte et les images extraits |
+
+Règles :
+
+ne change pas. Les critères d'acceptation de la v0.1 continuent de s'appliquer à ce niveau, tels quels.
+Un niveau demandé sans son modèle ne plante pas : la couche est sautée et un   le dit.
+Les modèles ne sont jamais téléchargés par la lib. L'appelant donne un dossier ( ). Pas de  .
+
+4.2 Choix d'algorithme
+
+Un seul champ, optionnel :  , liste d'identifiants ( ,  ,  ,  ,  ,  ,  ,  ). S'il est présent, il remplace le niveau d'effort. Il n'y a qu'un algorithme par identifiant.
+
+ 
+
+4.3 Comment une preuve probabiliste entre dans le verdict
+
+| Source | Couche | Force | Effet sur le verdict |
+|---|---|---|---|
+| Watermark dont la charge utile est connue et propre à un générateur ( ) |   |   |  , comme une métadonnée non signée |
+| Watermark d'un outil de génération, sans charge propre ( ) |   |   |   ; le détail précise que l'outil est ouvert et que n'importe qui peut marquer un fichier |
+| Watermark générique (  sans résolution) |   | aucune origine | note dans  , verdict inchangé |
+| Classifieur au-dessus du seuil calibré |   | hors échelle, porte un   |  , seulement si aucun verdict plus fort |
+
+Ceci modifie la spec, qui ne prévoit que cinq verdicts. Raison : garder   déterministe, pour que le critère 1 reste vrai.   n'apparaît qu'au niveau  . Le seuil est fixé à 1 % de faux positifs mesuré sur le corpus humain du projet, pas sur le banc de l'auteur du modèle. [J]
+
+CLI :   sort avec le code  , comme tout signal ;   permet de le distinguer. Une application qui ne veut que du déterministe reste en  .
+
+Avant d'accepter une détection  , mesurer son taux de faux positifs sur des images non marquées : 48 bits sans code correcteur imposent un seuil de bits concordants à fixer sur corpus. [J]
+
+4.4 Ce que je refuserais de construire
+
+| Refus | Raison |
+|---|---|
+| Plusieurs classifieurs par média, au choix | Les petits sont mauvais (BERT-tiny : 0,506 sous paraphrase [V]) ; les autres font doublon. Un seul, bien mesuré. |
+| Vote ou ensemble de détecteurs | Calibration impossible à tenir pour un petit projet. [J] |
+| Méthodes à LLM (Binoculars, Fast-DetectGPT) | Plusieurs Go, lent sur CPU, plus faibles sous attaque (déjà établi). |
+| Classifieur vidéo et décodage vidéo | Pas de décodeur léger ; AUC en baisse de 50 % en conditions réelles [V]. |
+| Classifieur audio passif | EER moyen de 60 % sur enregistrements réels [V]. |
+| Localisation de retouche par modèle (TruFor et proches) | Licence absente, poids de recherche. [V pour l'absence de licence] |
+| Détection SynthID | Pas de détecteur public. |
+| Téléchargement de modèles, clients HTTP/S3/FTP dans la lib | Casse la promesse hors ligne ; voir section 7. |
+| Verdict « humain » | Aucune méthode ne le prouve. Inchangé depuis la v0.1. |
+| Modèles sous licence non commerciale | Une lib MIT ne doit pas piéger ses utilisateurs. [J] |
+
+5. Auteur mixte
+
+| Média | Ce qui est mesurable | Preuve | Limites |
+|---|---|---|---|
+| Image, vidéo, audio, PDF signés | Historique C2PA : actions ( ,  ,  …) avec leur  , et ingrédients avec leur propre manifeste | Le vocabulaire IPTC distingue  ,  ,  ,   (retouche par IA générative, inpainting),  ,  ,   [V] https://cv.iptc.org/newscodes/digitalsourcetype/ | Déclaratif : ne vaut que si l'outil l'écrit et si le signataire est de confiance. Perdu si le manifeste est retiré.   et   divergent déjà sur les ingrédients manquants (  §4). |
+| Image non signée | Localisation de retouche ou d'inpainting par modèle | Semi-Truths : 1 472 700 images augmentées par IA ; les détecteurs ont des « sensibilités variables » selon le type et le degré de retouche [V] https://arxiv.org/abs/2411.07472 | Pas de modèle redistribuable relevé. Refusé pour l'instant. |
+| Texte | Score par fenêtre (paragraphe), puis recherche de frontière | SemEval-2024 tâche 8, sous-tâche C : meilleure erreur absolue moyenne 15,68, référence 21,54 [V] https://arxiv.org/abs/2404.14183 | L'unité de cette erreur (mots, d'après la définition de la tâche) n'a pas été revérifiée. Elle ne couvre qu'une seule frontière humain puis machine. |
+| Texte IA retouché par un humain | Même score, en baisse | Beemo : l'édition par un expert « échappe à la détection » [V] https://arxiv.org/abs/2411.04032 | Pas de seuil fiable. |
+| Texte humain poli par une IA | Même score, en hausse | APT-Eval, 12 détecteurs : ils signalent « fréquemment » comme IA un texte poli a minima, et distinguent mal les degrés d'intervention [V] https://arxiv.org/abs/2502.15666. MixSet : les détecteurs « peinent » sur le texte mixte [V] https://arxiv.org/abs/2401.05952 | Risque direct de faux positif sur un auteur qui a utilisé un correcteur. |
+| Vidéo non signée | rien de mesurable avec les moyens du projet | — | Refusé (section 4.4). |
+| Audio marqué | AudioSeal localise le watermark à l'échantillon près | [V] résumé de https://arxiv.org/abs/2401.17264 | Ne voit que l'audio marqué. |
+| Audio non marqué | Détection d'usurpation partielle | PartialSpoof : résolutions de 20 à 640 ms ; EER au niveau de l'énoncé 0,77 % sur ce jeu [V] https://arxiv.org/abs/2204.05177 ; modèles publics peu diffusés (moins de 10 téléchargements) [V] API Hugging Face | Chiffres de laboratoire ; même problème de généralisation que 3.3 [J]. Refusé. |
+| Documents | Par partie : chaque image et chaque bloc de texte reçoit son propre résultat | composition [J] | Hérite des limites ci-dessus. |
+
+Proposition, sans nouveau verdict : un champ   dans le rapport.
+
+ 
+
+État du code : la version commitée de   ne lit que les actions du manifeste actif. Une modification non commitée, apparue dans l'arbre de travail pendant cette recherche, ajoute   (une entrée par action, avec le   de l'action ou de l'ingrédient) et  . Elle couvre le début de l'incrément 1. Le champ   ci-dessus doit donc s'aligner sur ces noms plutôt que les doubler. [V, lecture de l'arbre de travail à la date du document]
+
+À dire dans le README : pour le texte, la lib ne sait pas distinguer « IA retouchée par un humain » de « humain poli par une IA ». Elle donne des scores par passage, rien de plus.
+
+6. « Je génère une image avec ChatGPT, puis je vous donne une capture d'écran »
+
+Ce qui est perdu
+
+C2PA. Le manifeste est lié aux octets du fichier d'origine. Une capture d'écran est un nouveau fichier : il n'y a plus de manifeste. [J, découle du principe de liaison par hachage]
+XMP/IPTC et chunks PNG. Ils ne sont pas copiés par l'outil de capture. [J]
+
+Ce qui peut survivre
+
+Source : page d'aide d'OpenAI « Provenance signals in OpenAI-generated content », lue le 2026-11-12 [V] https://help.openai.com/en/articles/8912793-provenance-signals-in-openai-generated-content.
+
+| Signal | Survit ? | Détectable par isitai ? |
+|---|---|---|
+| Content Credentials (C2PA) | Non. OpenAI : ils « peuvent être perdus » par une capture d'écran ou une conversion de fichier [V] | — |
+| Watermark SynthID dans les pixels | Probablement. Les images de ChatGPT, de Codex et de l'API portent C2PA et SynthID. SynthID est « conçu pour résister » à des changements courants, dont le recadrage et les captures d'écran. Un fort recadrage ou une forte compression peuvent le rendre indétectable [V]. Aucun taux chiffré n'est publié pour la capture d'écran : le mot n'apparaît pas comme transformation testée dans l'article SynthID-Image [V, recherche plein texte] | Non, hors ligne. Le détecteur n'est pas public. OpenAI propose openai.com/verify (envoi du fichier) et une « Content Provenance API » [V]. Les deux sont en ligne. |
+| Traces statistiques vues par un classifieur | En partie | Oui, au niveau  , avec une perte très variable |
+
+Chiffres publiés sur la re-numérisation (RRDataset, 17 détecteurs ; la catégorie couvre « le scan, la re-photographie ou des méthodes similaires », pas la capture logicielle) [V] https://arxiv.org/abs/2509.09172 :
+
+| Détecteur | Images IA détectées, original | Après re-numérisation |
+|---|---|---|
+| DRCT-ConvB (le meilleur au global) | 93,52 % | 64,34 % |
+| DIRE | 89,72 % | 1,42 % |
+| AIDE | — | baisse de 1,89 point seulement |
+| Ensemble | — | 16 détecteurs sur 17 perdent en détection |
+
+Ces chiffres valent après affinage sur ce même jeu. Une capture d'écran logicielle est moins dégradante qu'une photo d'écran, mais elle ajoute redimensionnement, recadrage et bords d'interface. Aucun chiffre propre à la capture logicielle n'a été trouvé.
+
+Ce qui est réaliste pour le projet
+
+1. Niveau   :  , avec une note. Si le fichier ressemble à une capture d'écran, le rapport l'indique : « capture d'écran probable : les métadonnées de provenance n'ont pas pu survivre,   ne dit rien ». Indices déterministes à valider sur de vrais fichiers : valeur IPTC   (elle existe dans le vocabulaire [V]), champs écrits par les outils de capture (non vérifié), dimensions égales à une résolution d'écran. [J]
+2. Niveau   : un score de classifieur, documenté comme dégradé sur les captures. Le corpus du projet doit contenir des captures d'écran d'images IA et de photos, pour mesurer le rappel et les faux positifs réels avant toute promesse.
+3. Ne pas promettre SynthID. La note de capture d'écran renvoie vers le vérificateur du fournisseur. L'appel reste dans le code de l'utilisateur : il envoie le fichier à un tiers, ce que la lib ne fait jamais.
+4. Réponse honnête à donner à l'utilisateur : « Le marquage existe probablement encore dans les pixels, mais seul OpenAI sait le lire, en ligne. Hors ligne, nous ne pouvons pas le prouver. Nous pouvons au mieux donner une probabilité, moins fiable sur une capture. »
+
+7. Entrées distantes et flux
+
+Faits :
+
+exige   [V] https://docs.rs/c2pa/latest/c2pa/struct.Reader.html. Il existe des variantes   pour le MP4 fragmenté [V].
+Le cœur expose   [V,  ].
+Valider un manifeste C2PA demande de hacher l'actif entier. Un fichier signé est donc lu en totalité, quel que soit le transport. [J, découle de la liaison par hachage]
+Le scan XMP actuel lit lui aussi tout le fichier, par fenêtres de 4 Mo [V,   §3].
+
+Recommandation :
+
+| Besoin | Où | Comment |
+|---|---|---|
+| HTTP, S3, FTP/SFTP | code de l'appelant | Télécharger vers un fichier temporaire, puis  . Les identifiants, proxys, reprises et limites de taille sont l'affaire de l'application. |
+| Flux non repositionnable (upload en morceaux,  , flux Node, objet fichier Python) | lib, une seule aide |   : copie vers un fichier temporaire borné, puis  . Mémoire constante. |
+| Lecture par plages (HTTP  , S3   avec plage) | appelant, déconseillé | Possible en implémentant  , mais un fichier signé sera de toute façon lu en entier, avec une latence par requête. Le fichier temporaire est plus simple et plus rapide. [J] |
+| MP4 fragmenté (DASH/HLS) | hors périmètre |   le prévoit ; à rouvrir si un utilisateur le demande. |
+
+Pourquoi aucun client réseau dans la lib : promesse « aucun appel réseau » (critère 4), taille du binaire (  est compilé sans client HTTP), surface de sécurité (une URL fournie par un tiers devient une requête côté serveur), et KISS. Le README donne trois recettes de dix lignes (HTTP, S3, flux Node).
+
+8. Feuille de route priorisée
+
+| # | Incrément | Périmètre | Test d'acceptation | Taille | Risque |
+|---|---|---|---|---|---|
+| 1 | Historique C2PA (en cours dans l'arbre de travail :  ,  ) | Lire les ingrédients et toutes les actions ; exposer base et retouches ; reconnaître  ,  ,  ,  ,   | Un fichier « capture signée puis retouche générative signée » donne  ,  . Verdicts v0.1 inchangés sur tout le corpus. | 0 [J] | Faible. Peu de fichiers réels à plusieurs manifestes pour tester. |
+| 2 | Options  / , note « capture d'écran »,   | Squelette des options avec   seul ; note de capture d'écran ; aide pour flux non repositionnable ; recettes HTTP/S3 |   sans modèle renvoie un  , pas une erreur. Un flux de 64,7 Mo passe sous 20 Mo de mémoire. 0 fausse note « capture » sur le corpus de photos. | environ 0 [J] | Faible. Les indices de capture sont à observer d'abord. |
+| 3 |   : premier niveau   | Décodage d'image ; DWT + DCT en Rust ; comparaison aux deux charges publiques SD 1 et SDXL [V] ; seuil de bits fixé sur corpus | Image SDXL produite par   avec watermark : détectée, y compris après JPEG q75. 0 détection sur 2 000 images non marquées. Le README dit que le redimensionnement et le recadrage le détruisent. | cœur : décodeur d'image, à mesurer ; rester sous 10 Mo, sinon feature optionnelle | Moyen. Portée réelle inconnue : beaucoup d'outils ne l'appliquent pas. Faible coût, donc bon premier test du niveau  . |
+| 4 | Spike moteur d'inférence + AudioSeal | Mesurer   (liaison dynamique) contre   sur macOS, Linux, Windows : taille, temps CPU, opérateurs. Paquet optionnel  . Décodage audio ( ), rééchantillonnage, détecteur 33 Mo, segments localisés dans  . TrustMark évalué dans le même spike, livré seulement s'il apporte un signal utile. | Paquet cœur inchangé. Taille du paquet optionnel mesurée et écrite. Audio marqué par l'outil de référence détecté après MP3 128 kb/s ; 0 détection sur 10 h de parole non marquée ; résultat sous filtre passe-haut publié (point faible connu [V]). | cœur : 0 ; optionnel : moteur (9 à 81 Mo compressé [V]) + 33 Mo | Moyen à élevé.   sans version stable [V]. Conversion ONNX officielle d'AudioSeal absente (tierce seulement [V]). MPL-2.0 de   à accepter. Si le spike déçoit, s'arrêter ici. |
+| 5 | Texte   | Normalisation (homoglyphes, largeur nulle), classifieur unique, score par paragraphe, verdict   | Faux positifs inférieurs ou égaux à 1 % sur le corpus humain français et anglais du projet. Si le français dépasse 1 % : couche limitée à l'anglais, avec  . Rappel publié à côté des faux positifs. | optionnel : +144 Mo | Élevé. Anglais seulement [V] ; CC-BY-SA-4.0 [V] ; modèle publié le 2026-10-21, sans recul [V] ; faux positifs sur texte poli par IA [V] ; risque d'usage punitif (copies d'élèves). |
+| 6 | Image   (décision go/no-go) | Banc d'un classifieur sous licence permissive (Community Forensics, 83 Mo, MIT) sur le corpus du projet, captures d'écran et recompressions incluses. Livrer seulement si le banc passe. | Seuil à 1 % de faux positifs sur 2 000 photos réelles ; rappel publié par catégorie (original, JPEG, réseau social, capture d'écran). Abandon si le rappel sur capture est sous 50 %. | optionnel : +83 Mo | Élevé. Généralisation faible documentée [V]. Peut se terminer en « non ». |
+
+Ordre et écart avec la spec : la spec plaçait les watermarks en v0.3 et les classifieurs en v0.4 au plus tôt ; cet ordre est conservé. Les incréments 1 et 2 s'insèrent dans la v0.2, sans dépendance nouvelle. Les seuils chiffrés des tests d'acceptation (2 000 images, 10 h, 50 %) sont des propositions [J].
+
+Hors feuille de route : vidéo au-delà de C2PA et des métadonnées, classifieur audio passif, localisation de retouche d'image, tout ce que liste la section 4.4.
+
+9. Affirmations non vérifiées
+
+| Affirmation | État |
+|---|---|
+| SynthID-Image : TPR supérieur à 99 % à 0,1 % FPR | Résumé de recherche ; tableau non relu |
+| Taux de survie chiffré de SynthID après capture d'écran | Aucun chiffre publié trouvé ; OpenAI dit seulement « conçu pour résister » |
+| Date du 19 mai 2026 pour l'ajout de SynthID par OpenAI | Presse seulement ; la page d'aide confirme le fait, pas la date |
+| Robustesse chiffrée de TrustMark et de VideoSeal | Non extraite des articles |
+| Précision de Community Forensics ; chiffres de TruFor | Non extraite |
+| Licence de TruFor | GitHub n'en indique aucune ; texte non lu |
+| ImageDetectBench : watermark préférable au passif | Résumé de recherche, non relu |
+| Coût CPU par élément de tout modèle neuronal cité | Aucun chiffre trouvé ; à mesurer au spike |
+| Taille décompressée d'ONNX Runtime ; surcoût binaire de   et de   | Non mesuré |
+| Couverture des opérateurs par   | Non testée |
+| Absence de décodeur vidéo Rust pur utilisable | Jugement, non recherché |
+| Unité de l'erreur de la sous-tâche C de SemEval (mots) | De mémoire |
+| Taille officielle des modèles ONNX TrustMark | Seul un dépôt tiers a été mesuré (45 Mo) |
+| Outils qui appliquent réellement le watermark SD/SDXL ; taux de faux positifs d'un décodage 48 bits | Non observé ; à mesurer |
+| Champs écrits par les outils de capture d'écran | Non observés |
+| Petit modèle ouvert de détection de texte en français ou multilingue | Recherche superficielle (deux requêtes sur Hugging Face) ; absence non démontrée |
+| Détecteurs de musique générée par IA | Non étudiés |
+| Les scores RAID repris (GPTTrace, Tabularis, BERT-tiny, e5-small) | Lus dans les   du dépôt RAID ; non reproduits |

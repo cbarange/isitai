@@ -1,0 +1,114 @@
+Rapport QA — isitai 0.1.0-alpha.0
+
+Date : 2026-11-12. Machine : macOS arm64, rustc 1.99.1, Node 24.15, Python 3.15.
+Build testé : commit  . L'option   et le champ   ne sont pas couverts.
+
+Marques : [O] observé avec la commande donnée, [S] supposé. Les constats 1, 2, 3, 6 et 10 ont été reproduits une seconde fois, indépendamment, sur l'arbre de travail du 2026-11-12.
+
+Résumé
+
+0 faux   sur 315 fichiers lus avec les ancres de test : 223 synthétiques, 13 signés, 12 variantes (manifeste falsifié ou greffé), 67 fixtures c2pa-rs. [O]
+Le critère 1 n'est pas tenu pour   : 13 fichiers humains sur 80 reçoivent un verdict IA appuyé sur une preuve  , et 3 autres sur deux preuves  . [O]
+Un MP4 de 800 Ko occupe l'outil 28 s (temps quadratique). [O]
+Aucun crash, aucun panic, aucune croissance de mémoire liée à une longueur déclarée. [O]
+CLI, Node et Python donnent le même rapport sur 247 fichiers, sauf un avertissement présent dans la CLI seule. [O]
+
+Reproduire
+
+Utiliser un   que personne d'autre n'utilise : pendant ce test, un build concurrent a écrasé le binaire une fois, et tout a dû être rejoué.
+
+ 
+
+Corpus signé (réseau requis pour les fixtures,   authentifié) :
+
+ 
+
+Depuis que la liste de confiance C2PA officielle est embarquée, le même corpus signé vérifie aussi que le certificat de TEST de c2pa-rs n'est pas de confiance par défaut. Sans  ,   doit annoncer « 13 files, 13 not ok », tous en   :   au lieu de  ,   au lieu de  , avec l'avertissement « signer is not in the trust list ». Avec  , « 13 files, 0 not ok » (relevé du 2026-11-12).
+
+  est déterministe (mêmes sha256 sur deux générations). Les étiquettes ont été fixées avant la première exécution et jamais ajustées.
+
+Ce qui a été testé
+
+| Catégorie | Fichiers | Écarts | Contenu |
+|---|---|---|---|
+|   | 39 | 12 | prose FR/EN, Markdown, code, CSV/JSON/YAML/HTML, emoji ZWJ, typographie française, BOM, 10 Mo, textes qui citent les artefacts |
+|   | 27 | 6 | un positif par alternative de chaque règle de   |
+|   | 18 | 15 | le même positif dans d'autres conteneurs : HTML, XML, shebang, Latin-1, UTF-16, plus de 16 Mio |
+|   | 21 | 7 | chaque clé de   en tEXt/iTXt/zTXt, clés au contenu non IA |
+|   | 67 | 7 | 11 valeurs DigitalSourceType × JPEG/PNG/WebP, MP4, PDF, SVG, frontières de 4 Mio |
+|   | 45 | 1 | vide, 1 octet, aléatoire, tronqués, mauvaise extension, longueurs déclarées géantes |
+|   | 6 | 0 | PNG à 1 M de chunks, textes pathologiques de 10 Mo |
+| signé | 13 | 0 | 12 formats IA + 1 capture, certificat de test c2pa-rs |
+| variantes signées | 12 | 4 | manifeste falsifié, greffé, preuve signée + XMP contraire |
+
+En plus : un balayage de 7 405 fichiers texte locaux présumés humains ( ,  ,  ,  ).
+
+Constats, par gravité
+
+Classe : B bug, R règle trop large, S écart avec la spec, L limite connue.
+Variables :   binaire,   corpus synthétique,   corpus signé,   variantes,   ancres de test,   dossier temporaire.
+
+| # | Gravité | Classe | Constat | Reproduction |
+|---|---|---|---|---|
+| 1 | Critique | B | Temps quadratique sur MP4. 100 000 boîtes   vides (800 Ko) : 28,5 s ; ×4 à chaque doublement. [O] Cause dans le parseur BMFF de c2pa-rs. [S] |   |
+| 2 | Haute | R | Clés PNG sans regard sur le contenu. Un chunk  ,   ou   donne     et un  , même vide.   contenant « NovelAI » aussi. 5 faux positifs humains. [O] |   |
+| 3 | Haute | R | Règles texte   sur du texte humain qui emploie ou cite le motif (article, rapport de trafic, code, doc). 7 faux positifs. Le   et la spec du dépôt sont eux-mêmes  . [O] |   ;   |
+| 4 | Haute | B | Une preuve signée est annulée par un XMP non signé. Manifeste IA de confiance + XMP   (preuve  ) :   au lieu de  . [O] |   |
+| 5 | Haute | B | Les règles texte ne tournent pas si le fichier est reconnu comme autre chose : HTML, XML, script avec shebang, texte qui commence par  ,  ,  ,  , ou tout texte contenant   dans les 8 premiers Ko. Le même contenu via   donne  . 12 faux négatifs ; 377 fichiers   réels sur 3 000 sont vus comme scripts shell. [O] |   puis   |
+| 6 | Haute | B | Fichier d'ancres illisible : la lecture C2PA est coupée. Un fichier signé IA passe de   à  , code 0, avec seulement un avertissement « TOML parse error ». [O] |   |
+| 7 | Moyenne | R | Deux   suffisent sur du Markdown humain : un titre ou du gras, plus un seul U+200B. 3 faux positifs synthétiques et 1 réel. [O] |   |
+| 8 | Moyenne | B | Preuves PNG non dédupliquées. 300 000 chunks   (7,2 Mo) : 89 Mo de JSON, 551 Mo de RSS. [O] |   |
+| 9 | Moyenne | B | PNG à très nombreux petits chunks. 1 M de chunks vides (12 Mo) : 3,1 s, 111 Mo de RSS ; linéaire, environ 3 µs par chunk. [O] |   |
+| 10 | Moyenne | S |   n'est pas détecté : la règle exige une frontière de mot avant  . 6 faux négatifs. [O] |   |
+| 11 | Moyenne | R | Paquet XMP cité dans un HTML :     ; le même texte en Markdown donne  . [O] |   |
+| 12 | Moyenne | S |   absent des règles alors que la spec le liste comme source IA :  , y compris dans un manifeste signé de confiance. [O] |   |
+| 13 | Moyenne | B | Manifeste invalide : aucun avertissement, mais   rempli à partir de ce manifeste. [O] |   |
+| 14 | Moyenne | B | Texte non UTF-8 ou trop long : ignoré sans avertissement (Latin-1, UTF-16, au-delà de 16 Mio). [O] Clos pour les encodages : UTF-16 avec BOM et Windows-1252/Latin-1 sont décodés, avec l'avertissement « text decoded as … » ;   et   donnent  . Au-delà de 16 Mio : avertissement, texte non analysé en entier (  reste en écart). |   |
+| 15 | Basse | B |   n'est lu qu'en tEXt, pas en iTXt ni zTXt. [O] |   |
+| 16 | Basse | L | XMP non vu : iTXt compressé, paquet UTF-16, sidecar  , paquet de plus de 256 Kio à cheval sur une fenêtre. [O] |   |
+| 17 | Basse | S | CLI.   (donné dans la spec) est pris pour un fichier, code 2. Un dossier en argument :  , code 0. [O] |   |
+| 18 | Basse | S | Schéma de sortie différent de la spec :   est un type MIME, pas de  , champs   et   en plus ;   rempli même avec  . [O] |   |
+| 19 | Basse | B | Bindings. La CLI ajoute l'avertissement « declared type differs », pas Node ni Python. Node :   répond   sans erreur. Un surrogate isolé est accepté par Node, refusé par Python. [O] |   |
+
+Suivi (arbre de travail après  , même corpus synthétique de 224 fichiers) :   passe de « 19 not ok » à « 17 not ok ». Les deux fichiers corrigés sont   et   (constat 14). Autres rapports modifiés, sans changement de verdict :   est maintenant lu comme texte UTF-16 mais son paquet XMP n'est toujours pas vu (constat 16, toujours ouvert) ;   (1 octet) et   (2 octets) sont rapportés   avec « text decoded as Windows-1252 », car ils ne contiennent aucun octet de contrôle.
+
+L'entrée standard est lue par   (limite  , 256 Mio par défaut) ; les bindings ont   /  .   ne couvre que les fonctions par chemin : l'égalité « flux = octets » est vérifiée par les tests unitaires de chaque front.
+
+Faux positifs de chaque règle texte sur du contenu humain
+
+Base : 39 fichiers humains synthétiques et 7 405 fichiers réels. Les fichiers synthétiques ont été écrits en connaissant les règles : ils montrent que le cas existe, pas sa fréquence.
+
+| Règle | Force | Synthétique (touchés / verdict IA) | Réel (touchés / verdict IA) | Analyse |
+|---|---|---|---|---|
+|   | strong | 1 / 1 | 0 / 0 | Très spécifique. Faux positif seulement quand un texte cite l'artefact. |
+|   | strong | 1 / 1 | 0 / 0 | Même cas. |
+|   | strong | 3 / 3 | 0 / 0 | Touche un rapport de trafic, du code, et tout message humain qui contient un lien copié depuis ChatGPT. Le signal porte sur le lien, pas sur le texte. |
+|   | strong | 3 / 3 | 0 / 0 | La plus fragile : « As an AI model grows… » est une phrase de journaliste. Aucune ancre sur la première personne. |
+|   | weak | 5 / 3 | 3 / 1 | Légitime en thaï, fréquent dans du texte copié du web. |
+|   | weak | 9 / 3 | 1 861 / 1 | Touche 81 % des   réels et du code ( ). Ne distingue pas « Markdown resté dans un champ texte » de « fichier Markdown ». |
+
+Conséquence : sur un fichier  , la règle « deux   » revient à « un seul U+200B ».
+
+Contrôles négatifs réussis : typographie française, emoji ZWJ, BOM initial, CSV, JSON, HTML simple, 10 Mo de prose. [O]
+
+Performance
+
+| Entrée | Taille | Temps | RSS max |
+|---|---|---|---|
+| texte court | 1,3 Ko | < 0,01 s | 8,4 Mo |
+| prose | 10,5 Mo | 0,02 s | 21 Mo |
+| MP4 BigBuckBunny | 64,7 Mo | 0,01 s | 14 Mo |
+| PNG 1 M chunks vides | 12 Mo | 3,1 s | 111 Mo |
+| PNG 300 000   | 7,2 Mo | 3,3 s | 551 Mo |
+| MP4 100 000 boîtes vides | 0,8 Mo | 28,5 s | 41 à 46 Mo |
+
+c2pa-python 0.38.0 seul est lent sur les mêmes fichiers (34 s pour 50 000 boîtes MP4), ce qui désigne c2pa-rs pour les constats 1 et 9, sans le prouver pour la version 0.92.0. [S]
+
+Non testé, et pourquoi
+
+Aucune sortie réelle de générateur : pas de générateur d'image, d'audio ni de vidéo disponible. Les positifs sont écrits à la main d'après les formats publics.
+Aucun fichier signé par un vrai produit ou appareil : seul le certificat de test c2pa-rs a servi.
+PDF et M4A signés : c2pa-python 0.38.0 refuse de les signer.
+Autres plateformes : macOS arm64 seulement.
+Absence d'appel réseau (critère 4) : non vérifiée, faute de bac à sable réseau.
+Fréquence réelle des faux positifs : le balayage ne contient ni presse ni messages ; il sous-estime sans doute   et  . [S]

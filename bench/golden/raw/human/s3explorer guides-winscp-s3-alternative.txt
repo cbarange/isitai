@@ -1,0 +1,36 @@
+In short: WinSCP is a free (GPL) Windows file transfer client that supports S3 alongside SFTP, FTP, WebDAV and SCP. It is a good fit for moving files to a bucket. A dedicated S3 client such as S3 Explorer adds S3-specific features (versions, metadata, presets for S3-compatible providers, search in large buckets) and runs on macOS and Linux too.
+
+What WinSCP does with S3
+
+Buckets appear as folders at the root; creating a folder there creates a bucket.
+It uses the S3 REST API and documents connection guides for Amazon S3, Google Cloud Storage, Backblaze B2, Cloudflare R2 and Oracle Object Storage, and says other S3-API services work too.
+Scripting and a .NET assembly make it useful for automated transfers on Windows.
+
+A documented quirk: buckets shared from another account, or buckets you are not allowed to list, do not appear at the root; you set   as the initial remote directory instead.
+
+At a glance
+
+| | WinSCP | S3 Explorer 0.3.9 |
+|---|---|---|
+| Platforms | Windows | Windows, macOS, Linux |
+| License | Free, GPL v3 | Free with all features, 5 profiles; licence 11.50 € lifetime |
+| Protocols | SFTP, FTP, WebDAV, SCP, S3 | S3 and S3-compatible only |
+| S3-compatible setup | Endpoint per provider guide | 25 built-in presets + custom endpoint |
+| Automation | Scripting, .NET assembly | Not the focus |
+| Object versions, tags, metadata | Not covered in its S3 guide | Browse and manage |
+| Large buckets | Folder listing | Local index for search |
+
+Which one to choose
+
+Windows, several protocols, scripted transfers: WinSCP.
+macOS or Linux: S3 Explorer (WinSCP is Windows-only).
+Daily S3 work: versions, metadata, several providers, large buckets: S3 Explorer.
+
+Sources
+
+WinSCP: connecting to Amazon S3
+WinSCP: S3 protocol and compatible services
+WinSCP license (GPL v3)
+S3 Explorer pricing
+
+Comparison based on WinSCP's documentation and S3 Explorer 0.3.9, on October 15, 2026. S3 Explorer is developed by the publisher of this site.

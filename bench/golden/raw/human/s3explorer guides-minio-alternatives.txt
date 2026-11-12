@@ -1,0 +1,82 @@
+In short: MinIO's open-source edition no longer receives fixes. The repository is archived, no binaries or images are published, and the 2026 security fixes ship only in MinIO's proprietary AIStor. For a self-hosted replacement, the main options are Silo (a drop-in MinIO fork), RustFS, SeaweedFS, Garage and Ceph RGW; managed S3 storage avoids the question altogether.
+
+Why MinIO became the default
+
+For a decade, MinIO was the answer to "S3 outside AWS":
+
+One static Go binary, running on a laptop, in Docker Compose, or on bare metal.
+Strong S3 compatibility, good enough for most SDKs and tools to work unchanged.
+Fast, with erasure coding and distributed mode for multi-node clusters.
+Ubiquitous: Helm charts, a Kubernetes operator, the   client, and countless projects shipping it as their default storage.
+
+What happened
+
+| Date | Change |
+|---|---|
+| 2021 | License moves from Apache 2.0 to AGPL v3. |
+| May 2025 | The community web console is reduced to an object browser. User management, policies and lifecycle move to the paid product. |
+| October 2025 | No more binaries or Docker images for the community edition: source only. The last release,  , fixes a high-severity privilege escalation (CVE-2025-62506) but was never published as an official image. |
+| December 2025 | The repository enters maintenance mode: no features, no pull requests, security fixes "case by case". |
+| 2026 | The README states the repository is no longer maintained, and  ,   and   are archived (read-only). |
+
+MinIO's own README now points to AIStor, its proprietary product, as the alternative.
+
+The security problem
+
+This is the part that matters for anything in production. Since January 2026, MinIO has published seven security advisories on the archived repository, including:
+
+CVE-2026-41145 (high): unauthenticated object write through a signature bypass in unsigned-trailer uploads.
+CVE-2026-40344 (high): unauthenticated object write through missing signature verification in Snowball auto-extract.
+CVE-2026-34204 (high): SSE metadata injection through replication headers.
+CVE-2026-39414 (high): denial of service through unbounded memory allocation in S3 Select.
+CVE-2026-42600 (medium): path traversal on multi-node clusters, up to reading host files when MinIO runs as root, the historical Docker default.
+
+The fixed versions listed in these advisories ship in AIStor. None of them exists in the open-source repository, which has had no code change since November 2025. In other words: the open-source MinIO is vulnerable to known, documented flaws, and will stay so.
+
+The last official Docker image ( ) is also older than the October 2025 fix.
+
+What to expect in the coming months
+
+More advisories, fixed only in AIStor. The pattern is established; there is no reason for it to change.
+No images, no packages. Pulling   already fails. Any rebuild, node replacement or new environment depends on an image you mirrored yourself or build from source.
+The ecosystem moves away. Helm charts, operators and projects that bundled MinIO are switching their default storage.
+AIStor Free is not open source. It is a free licence for a proprietary binary, limited to single-node deployments (no distributed mode, no replication), with terms that MinIO can revise.
+
+What not to expect: a return of the community edition. A running cluster will keep serving objects, but it is now a frozen, unpatched component.
+
+Alternatives
+
+Free and open source
+
+| Project | License | Best for | Status |
+|---|---|---|---|
+| Silo (formerly  ) | AGPL v3 | Staying on MinIO with minimal change | Community fork: rebuilt binaries and images, console restored, security fixes. Drop-in replacement. |
+| RustFS | Apache 2.0 | A MinIO-like distributed model, permissive license | 1.0 released in September 2026. Young: test S3 compatibility on your workload. |
+| SeaweedFS | Apache 2.0 | Very large numbers of small objects, S3 + filesystem/HDFS/WebDAV | Mature (since 2015). More components to operate. |
+| Garage | AGPL v3 | Small, geo-distributed clusters on modest hardware | Stable, simple to run. Not built for raw throughput. |
+| Ceph RGW | LGPL | Large deployments, strict S3 semantics | The enterprise reference. Heavy to operate. |
+| Versity Gateway | Apache 2.0 | Exposing an existing filesystem or POSIX storage as S3 | Lightweight gateway, not a distributed store. |
+
+Paid
+
+MinIO AIStor Enterprise: the same lineage with support and fixes, under a commercial subscription. The path of least change, at a price.
+Commercially supported Ceph (IBM Storage Ceph, Croit, and others) for large on-premise deployments.
+Managed S3 storage, when self-hosting is not a requirement: Cloudflare R2 (no egress fees), Backblaze B2 and Wasabi (low cost per TB), Hetzner, OVHcloud and Scaleway (EU hosting), or AWS S3 itself.
+
+How to choose
+
+Need to stay on MinIO for now → Silo, then plan a longer-term target.
+Single node, development, CI → Garage or RustFS.
+Multi-node, MinIO-like → RustFS, after testing.
+Huge object counts, several protocols → SeaweedFS.
+Large scale, strict compatibility, a team to run it → Ceph RGW.
+No wish to operate storage at all → a managed provider.
+
+Migrating
+
+1. Inventory buckets, policies, users, lifecycle rules and versioning. They do not all have an equivalent on the target.
+2. Copy the data with   or   (the archived   client still works as a plain S3 client).
+3. Test the S3 calls your applications actually make (multipart, presigned URLs, versioning, batch delete) against the new endpoint before switching.
+4. Keep the old cluster read-only** until the new one has served production for a while.
+
+During the transition, both endpoints coexist. A desktop client that connects to any S3-compatible service, such as S3 Explorer, makes it easy to compare the old and new buckets side by side. The MinIO and Ceph connection guides list the settings for each.

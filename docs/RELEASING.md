@@ -61,3 +61,83 @@ A version with a pre-release suffix (`-alpha.N`) goes to the npm dist-tag `next`
 - Only the publish jobs get `id-token: write`, and only inside the approved `release` environment.
 - Every action is pinned by commit SHA. Dependabot proposes the updates.
 - `.env`, `*.pem` and `.npmrc*` are git-ignored. Never commit a token, even in a test.
+
+## Tokens: when they are needed, and which one
+
+Trusted publishing (OIDC) is the default and needs no secret. Three cases still require a token,
+and each has a dedicated secret in the `release` environment:
+
+| Registre | Secret | Pourquoi un jeton reste nécessaire |
+|---|---|---|
+| crates.io | `CRATES_IO` | Un trusted publisher ne peut pas être attaché à un crate qui n'existe pas encore : le tout premier envoi se fait au jeton |
+| npm | `NPM_TOKEN` | Même raison pour les paquets de plateforme `@cbarange/isitai-*`, qui doivent exister avant qu'un publisher y soit rattaché |
+| PyPI | `PIPY` | Le projet doit exister avant l'attachement du trusted publisher |
+
+Le workflow lit le secret s'il est présent et retombe sur OIDC sinon. Conséquences pratiques :
+
+- **Le jeton l'emporte quand il est défini.** C'est voulu pour le premier envoi, mais cela veut
+  dire qu'un secret oublié désactive la publication de confiance. Après le premier envoi réussi
+  de chaque registre : supprimer le secret, rattacher le trusted publisher, et le workflow
+  repasse seul sur OIDC.
+- **Un jeton exposé doit être révoqué, pas remplacé discrètement.** Les quatre règles : révoquer
+  sur le registre, supprimer le secret, publier une entrée `Sécurité` dans `CHANGELOG.md`,
+  vérifier les publications inattendues depuis la date d'exposition.
+
+```bash
+gh secret set CRATES_IO --env release --repo cbarange/isitai   # valeur demandée par gh, jamais dans l'historique
+gh secret set PIPY --env release --repo cbarange/isitai
+gh secret list --env release --repo cbarange/isitai
+```
+
+Un jeton ne se colle ni dans un ticket, ni dans un fichier du dépôt, ni dans une conversation :
+`gitleaks` tourne à chaque push et bloque l'ajout, mais il ne peut pas annuler une fuite déjà
+lue par quelqu'un.
+
+## Journal des versions
+
+Une publication est irréversible : un numéro consommé ne se réutilise pas, un paquet publié
+sans description de son contenu ne se répare pas. D'où deux contrôles bloquants, sur le tag :
+
+1. `scripts/check_versions.py` — Cargo, npm et PyPI portent la même version, et le tag
+   correspond.
+2. `scripts/check_changelog.py` — `CHANGELOG.md` contient une section pour cette version, avec
+   au moins un changement listé.
+
+Le geste, à chaque release :
+
+```bash
+# 1. renommer la section « Non publié » en « [X.Y.Z] - AAAA-MM-JJ » et ouvrir une nouvelle section vide
+# 2. aligner les trois fichiers de version, puis :
+python3 scripts/check_versions.py && python3 scripts/check_changelog.py
+git commit -am "release: vX.Y.Z" && git tag vX.Y.Z && git push origin main vX.Y.Z
+```
+
+## Budget de taille
+
+Deux contrôles, avec la même logique : le paquet doit rester petit, et une régression de taille
+est une régression tout court.
+
+- **En CI, à chaque push** (`package-size`) : le crate, le tarball npm, la sdist et le wheel
+  sont construits puis comparés à un budget. Le tableau est publié dans le résumé du job.
+- **Sur le tag** (`size-gate`) : les artefacts réellement destinés à la publication sont
+  contrôlés avant l'envoi. Un paquet hors budget arrête la release avant qu'elle ne devienne
+  irréversible.
+
+Budgets actuels, provisoires jusqu'à la première mesure réelle : crate 700 Ko, npm 500 Ko,
+sdist 900 Ko, wheel 4 Mo, binaire natif 4 Mo. Ils vivent dans les workflows, pas dans un
+fichier partagé, parce qu'un budget de taille se lit à côté de ce qu'il mesure.
+
+Ce qui réduit réellement la taille, dans cet ordre : `strip = true` et `lto = true` (déjà dans
+`[profile.release]`), `panic = "abort"` dans le profil `size`, l'exclusion des fixtures et du
+banc du paquet (`cargo package --list` pour vérifier), et le refus de toute dépendance qui
+embarque un moteur d'inférence dans le paquet de base — les modèles vivent dans un paquet
+optionnel, jamais dans le cœur.
+
+## Ce que la CI vérifie, et pourquoi ces trois-là
+
+| Job | Ce qu'il empêche |
+|---|---|
+| `hygiene` | Un secret ajouté au dépôt, une licence copyleft dans l'arbre de dépendances, un workflow YAML invalide |
+| `package-size` | Un paquet qui double de volume sans que personne ne le remarque |
+| `bindings-node-versions` / `bindings-python-versions` | Une API qui ne fonctionne que sur la version de Node ou de Python du développeur |
+
