@@ -168,8 +168,11 @@ def build_mixed(humans: list[dict], ais: list[dict], rng: random.Random) -> list
     """Insère un paragraphe IA à une frontière de phrase connue, et enregistre les offsets."""
     out = []
     pool = [a for a in ais if len(a.get("_text", "").split()) > 40]
-    for i, human in enumerate(humans[:TARGET_PER_CLASS]):
-        if not pool:
+    # On parcourt TOUS les textes humains : certains segments comptent moins de quatre
+    # phrases et ne peuvent pas recevoir d'insertion à frontière connue. S'arrêter aux 100
+    # premiers laissait la classe incomplète, et le contrôle fail-fast refusait la construction.
+    for i, human in enumerate(humans):
+        if len(out) >= TARGET_PER_CLASS or not pool:
             break
         h = (SET / human["path"].split("set/")[1]).read_text(encoding="utf-8")
         ai = pool[i % len(pool)]
