@@ -153,9 +153,7 @@ fn opens_with_contrast(sentence: &str) -> bool {
     let low = sentence.to_lowercase();
     CONTRAST.iter().any(|c| {
         low.strip_prefix(c)
-            .map(|rest| {
-                rest.is_empty() || !rest.starts_with(|ch: char| ch.is_alphanumeric())
-            })
+            .map(|rest| rest.is_empty() || !rest.starts_with(|ch: char| ch.is_alphanumeric()))
             .unwrap_or(false)
     })
 }
@@ -168,9 +166,14 @@ fn negates(sentence: &str) -> bool {
 /// `Ce n'est pas simple, c'est complexe.` inside a single sentence.
 fn not_x_but_y(sentence: &str) -> Option<(usize, usize)> {
     let low = sentence.to_lowercase();
-    let neg = ["ce n'est pas", "ce n’est pas", "il ne s'agit pas", "it is not"]
-        .iter()
-        .find_map(|p| low.find(p))?;
+    let neg = [
+        "ce n'est pas",
+        "ce n’est pas",
+        "il ne s'agit pas",
+        "it is not",
+    ]
+    .iter()
+    .find_map(|p| low.find(p))?;
     let contrast = ["c'est", "il s'agit de", "it is", "but it is"]
         .iter()
         .find_map(|p| low[neg..].find(p).map(|i| i + neg))?;
@@ -206,10 +209,7 @@ mod tests {
     use crate::{check_text, Layer, Rules, Verdict};
 
     fn rhetoric(input: &str) -> Vec<String> {
-        super::scan(input)
-            .into_iter()
-            .map(|e| e.id)
-            .collect()
+        super::scan(input).into_iter().map(|e| e.id).collect()
     }
 
     #[test]
