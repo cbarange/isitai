@@ -1,0 +1,49 @@
+Releasing
+
+Publishing runs in   when a   tag is pushed. It uses OIDC trusted publishing: no registry token is stored in GitHub. Each registry trusts this repo, this workflow file and the   environment, and nothing else.
+
+One-time setup
+
+1. GitHub environment  
+
+The publish jobs run only after a manual approval, and only for   tags. Create the environment once:
+
+ 
+
+ 
+
+2. Trusted publishers
+
+Use these values on each registry: owner  , repository  , workflow  , environment  .
+
+| Registry | Where | Packages |
+|---|---|---|
+| PyPI | pypi.org, project  , Manage, Publishing |   |
+| crates.io | crates.io, crate  , Settings, Trusted Publishing |   |
+| npm | npmjs.com, package settings, Trusted Publisher |  , then each   |
+
+npm bootstrap.** A trusted publisher can only be attached to a package that already exists, and the eight   platform packages do not exist yet. For the first release only:
+
+1. Create a granular npm token, limited to publishing, that expires after one day.
+2. Store it in the environment, not in the repository.   prompts for the value, so it never appears in your shell history:
+    
+3. After the release, add the trusted publisher to each   package, then delete the secret and revoke the token:
+    
+
+Each release
+
+1. Bump the version in   ( ),   and   (PEP 440 form:   becomes  ).
+2. Run  .
+3. Refresh the three embedded trust lists (official C2PA lists of manifest signers and of time-stamp authorities, interim list): run   (needs   and  ), read the added and removed certificates of each list, then run  . The interim list is frozen upstream: a change to it is unexpected, so read it with care. The lists are only read from the repository at build time; a release ships the snapshot it was built with.
+4. Commit, then tag and push:
+    
+5. Approve the   deployment in the Actions tab.
+
+A version with a pre-release suffix ( ) goes to the npm dist-tag  , so   keeps installing the last stable version.
+
+Security rules for this public repo
+
+No workflow uses  . Fork pull requests run without secrets and with a read-only token.
+Only the publish jobs get  , and only inside the approved   environment.
+Every action is pinned by commit SHA. Dependabot proposes the updates.
+,   and   are git-ignored. Never commit a token, even in a test.

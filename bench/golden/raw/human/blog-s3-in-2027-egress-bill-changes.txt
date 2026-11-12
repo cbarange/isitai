@@ -1,0 +1,148 @@
+Search for "S3 2027" and five of the first eight results are a car. The rest are
+trend pieces about GPUs and vector databases. Nobody is writing about the thing
+that actually has a date attached to it: on 12 January 2027, the EU Data Act makes
+it illegal to charge an EU customer for the egress involved in leaving.
+
+That is not a forecast. It is a paragraph in a regulation, and it lands harder on
+object storage than on any other part of a cloud bill, because object storage is
+the part nobody has a complete inventory of.
+
+The short version
+
+12 January 2027 — Article 29 of the EU Data Act (Regulation 2023/2854) takes
+  full effect: no switching fees, egress included, when an EU customer moves to
+  another provider or back on-premises.
+Everyday egress is still billed. The ban covers the export you do to
+  leave. Ordinary traffic, cross-region reads and CDN pulls stay chargeable.
+The financial lock-in weakens. The technical lock-in does not: someone still
+  has to enumerate what is in the buckets, who can read it, and what it costs.
+Three of the five items below are things you cannot learn from a bucket
+  listing — and that is the actual 2027 problem.
+
+ 
+
+What actually happens
+
+The date, precisely
+
+The Data Act entered into force in January 2024 and became applicable on
+12 September 2025. Chapter VI (Articles 23 to 31) targets cloud lock-in. Since
+that September date, providers can only charge at cost for switching, customer
+notice periods are capped at two months, and a 30-day transition window is
+mandatory. From 12 January 2027, the switching charge itself is gone.
+
+Read the scope carefully, because most vendor summaries do not: the ban applies to
+data egress and administrative penalties incurred when switching or running in
+parallel across providers. It does not abolish fixed-term commitments, and it
+does not touch the egress you generate in normal operation. AWS had already
+dropped exit fees in March 2024, before the rules required it; the regulation
+turns a courtesy into an obligation for everyone.
+
+The practical consequence: leaving becomes a technical project with no invoice
+attached, instead of a technical project with a penalty attached. That is a much
+better problem, and a much more honest one.
+
+The scale you are working at
+
+In December 2025 AWS reported S3 passing 500 trillion objects, and raised the
+maximum single object to 50 TB. Both numbers matter for the same reason: at
+that size, the debris is not debris. An abandoned multipart upload of a 50 TB
+object keeps its parts — billed as storage, invisible in a listing — until someone
+aborts it.
+
+This is not an edge case. Large uploads are the ones that get interrupted: a
+laptop closes, a CI job is cancelled, a network drops at hour six. The parts stay.
+
+The new client is not a person
+
+S3 stopped being a place where a human browses files. With S3 Vectors generally
+available in December 2025 — two billion vectors per index — a bucket is now a
+retrieval layer behind a model, written and read by code that has no idea what a
+folder is.
+
+That changes what a credential means. A presigned URL handed to an agent is a
+capability with a timer, and the timer is the security control. Which is why the
+rclone advisory of October 2026 is worth reading twice: a presigned PUT URL could
+read any bucket in the account, fixed in 1.75.2. The client was doing what clients
+do — trusting the URL it was given.
+
+The exposure is not theoretical
+
+The Cloud Exposure Index counted 484,142 public buckets and 18.05 billion
+files in October 2026, 71.9% of them on S3. Tenable's analysis found sensitive
+data in 16.7% of AWS buckets it sampled. Very little of that was a deliberate
+decision to publish; most of it was a policy nobody re-read after a migration.
+
+Where it bites
+
+Three failures, in the order they will find you.
+
+1. You cannot renegotiate what you cannot enumerate. A migration plan needs
+per-bucket size, object count, version count, incomplete uploads, and where the
+egress actually goes. The console shows objects. It does not show the uploads that
+never became objects, the non-current versions still billed, or which bucket is
+responsible for the egress line.
+
+2. You cannot prove who signed what. After an incident, "an agent with the
+wrong key" is not an answer. Which key, which session, which endpoint, which
+timestamp — the controls that produce those answers (ABAC on object tags, short
+presigned lifetimes, session-scoped credentials) are all configuration you have to
+write down.
+
+3. "S3-compatible" is a claim, not a specification. The moment leaving becomes
+free, the second provider stops being hypothetical. That is when checksum headers
+(CRC64NVME is now the SDK default) start failing against older gateways,
+path-style addressing reappears, and a provider's "compatible" turns out to mean
+"compatible with what our SDK did in 2023".
+
+Doing it right
+
+A checklist you can run this week, not in December 2027.
+
+Inventory, per bucket, and keep the output.
+
+ 
+
+The first one is the one people skip. Anything listed there is storage you are
+paying for and cannot see in a normal listing.
+
+Stop the bleeding at the source. A lifecycle rule with
+  set to a few days turns a permanent leak into a
+delay. It does not clean up what already exists — that is a one-off abort.
+
+Attribute the egress before someone asks. Cost allocation tags on buckets, and
+a look at which prefixes leave the cloud. A bill you can explain is a bill you can
+negotiate.
+
+Make access expressible. Tag-based policies ( ) let you
+say "tenant A may read tenant A's objects" without enumerating prefixes. Note the
+limits we wrote about before: tags are not visible to  , and
+  is unsupported on  .
+
+Test the second provider now, while nothing forces you to. One bucket, one
+key, one file with a checksum. You will learn more in twenty minutes than in a
+quarter of architecture review.
+
+How S3 Explorer fits
+
+The tooling gap in this article is narrow and real: a bucket viewer that shows
+objects but not the debris, the versions, the tags or the request pattern leaves
+you exactly where the regulation found you.
+
+S3 Explorer shows, per connection: a connection test that reports the bucket
+count before you browse, bucket cards that flag incomplete uploads older
+than a configurable threshold with the key, age and size of each, object
+metadata and version tabs, and a per-request metrics panel so the traffic
+you are paying for is visible while you work. Connections are per profile, which
+is what makes a second provider a two-minute test rather than a project.
+
+It is a desktop client for Windows, macOS and Linux, and it is built by the
+publisher of this blog. That is the disclosure; the checklist above stands on its
+own without it.
+
+The Data Act dates come from the European Commission's Data Act page and the
+regulation text; the 12 January 2027 deadline and its scope (switching only, not
+ongoing egress) follow Article 29 and the Commission's guidance as summarised by
+MoveInfra, October 2026. Object counts, public bucket figures and the rclone
+advisory are dated inline. Figures for egress pricing come from a 2026 comparison
+across 18 providers and will move.*

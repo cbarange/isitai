@@ -1,0 +1,226 @@
+API publique : critique et proposition
+
+État lu le 2026-11-12 sur   ( ,  ,  ,  ,  ). Les comportements cités ont été observés en exécutant l'addon Node et le module Python compilés, sauf la CLI (pas de binaire compilé : lue dans le code). Ces binaires datent d'avant les dernières modifications de   ; chaque constat a été recoupé avec le code source actuel.
+
+L'option   et le champ   sont en cours d'écriture dans   (non commités, non compilés). La section 2.9 commente l'état vu dans l'arbre de travail.
+
+1. Ce qu'un développeur pressé rencontre
+
+Ce qui marche déjà
+
+Trois fonctions, un rapport identique partout, pas de réseau, pas de postinstall.
+Le verdict est une chaîne lisible, pas un score.
+évite de découper la chaîne avec des offsets en octets.
+En Python, un mauvais type lève   et un fichier absent lève  .
+
+Ce qui surprend, par gravité
+
+A. Un   peut vouloir dire « je n'ai rien regardé ». C'est le défaut le plus grave, parce qu'il contredit la règle du produit.
+
+| Entrée | Résultat actuel |
+|---|---|
+| Binaire inconnu (zip, docx, octets quelconques) |  ,  , aucun avertissement |
+| Texte non UTF-8 (UTF-16, Latin-1) | idem, aucun avertissement |
+| Chemin vers un dossier |   avec  , sans exception |
+|   invalide | toute la lecture C2PA est abandonnée,  , un avertissement de dix lignes d'erreur TOML |
+| Option mal orthographiée ( ) | ignorée en silence |
+|   en Node | analyse la chaîne  , rend   |
+|   en Node | rejette avec   |
+
+B.   est inatteignable par défaut. Sans  , un manifeste valide plafonne à  . Le développeur qui teste une image ChatGPT conclut que la lib ne marche pas. La checklist de la spec prévoit d'embarquer la liste de confiance : c'est un point d'API, pas seulement de packaging.
+
+C. Les noms ne disent pas ce que prend la fonction.
+
+| | Texte | Chemin | Octets |
+|---|---|---|---|
+| Node |   |   |   |
+| Python |   |   |   |
+| Natif Node / Python |   |   |   /   |
+| CLI |   | argument | absent (pas de stdin) |
+
+  est le nom le plus court, donc celui qu'on essaie en premier, et il n'accepte que des octets.   donne en Node  , et en Python  . Aucun des deux messages ne renvoie vers  .
+
+D. Synchrone ou asynchrone selon la fonction, en Node.   rend une promesse,   est synchrone et hache jusqu'à plusieurs dizaines de Mo sur la boucle d'événements. Or   est justement la fonction des uploads, donc celle d'un serveur.
+
+E.   et   disparaissent quand ils sont vides.   lève une exception sur le cas le plus courant. Les avertissements sont de la prose anglaise : une application ne peut pas réagir à « signataire hors liste de confiance » sans comparer des phrases.
+
+F. La spec, le README et le code divergent.
+
+| Sujet | Spec | Code |
+|---|---|---|
+| Option de type |   |   |
+|   |   | type MIME ( ) |
+|   | présent | absent |
+|  ,   | absents | présents |
+|   | documenté | n'existe pas, la sortie est toujours du JSON |
+| Code de sortie 0 |   |   et   |
+| Clé   | absente | ajoutée par la CLI, absente des types |
+
+G. Types. En TypeScript,  ,   n'a pas d'options,   est une union non étiquetée. En Python,   : aucune complétion, pas de  .
+
+H. CLI. Un seul fichier rend quand même un tableau JSON indenté. Pas de sortie lisible, pas de  , pas de stdin. Le code de sortie   sur   se lit « OK » dans un script ( ).
+
+2. Proposition
+
+2.1 Fonctions : trois, nommées d'après l'entrée
+
+Pas de   polymorphe. Une chaîne seule est ambiguë : texte ou chemin ? Toute devinette finit en   trompeur.
+
+| Entrée | Node | Python | CLI |
+|---|---|---|---|
+| Texte |   : synchrone |   |   |
+| Chemin |   :   |   |   |
+| Octets |   :   |   |   (stdin, plus tard) |
+
+devient   /  . Le nom du cœur Rust est déjà  .
+Node : tout ce qui peut lire un fichier entier est asynchrone et tourne hors de la boucle d'événements.   reste synchrone (moins de 1 ms pour 10 Ko).
+Python : tout reste synchrone. Le GIL est déjà relâché,   suffit à qui en a besoin.
+Arguments stricts : un mauvais type lève  . On retire   et  .
+
+2.2 Entrées acceptées
+
+| Ce que le développeur a | La lib | L'appelant |
+|---|---|---|
+| Chemin ( ,  ) |   | |
+|  ,  ,  ,  ,   |   | |
+| Objet d'upload ( /  web, multer, FastAPI  ) | | une ligne, voir les recettes |
+| Flux ( ,  , fichier ouvert) | | l'écrire sur disque puis  , ou le mettre en mémoire |
+| URL http(s) | jamais | télécharger soi-même |
+
+Raisons : le cœur a besoin d'un flux repositionnable ( ), donc un flux réseau devrait de toute façon être mis en tampon ; et « aucun appel réseau » est une promesse du produit. Le README donne les recettes :
+
+ 
+
+ 
+
+2.3 Options
+
+Un seul objet d'options, le même pour les trois fonctions. En Python, les mêmes noms en  , par mot-clé uniquement.
+
+| Option | Décision | Raison |
+|---|---|---|
+|   | garder le nom ; la liste C2PA embarquée devient la valeur par défaut, l'option la remplace | le nom dit le format ;   marche sans configuration |
+|   | garder le nom, corriger la spec ( ) |   laisserait croire qu'on force le type ; ici il est seulement comparé au type détecté |
+|   |  , défaut   | voir les contraintes ci-dessous |
+
+Une clé inconnue ou une valeur invalide lève   (  en Python). Un PEM illisible lève aussi : c'est une erreur de configuration, pas un fait sur le fichier.
+: la doc dit en une ligne ce que chaque niveau ne lit pas. Le rapport répète le niveau utilisé ( ), sinon un   rapide et un   complet sont indiscernables.
+
+2.4 Rapport
+
+ 
+
+Forme stable : toutes les clés toujours présentes.  ,  .
+  : émis quand aucun lecteur ne s'applique (binaire inconnu, texte non UTF-8). Le verdict reste  , mais l'application peut afficher « format non pris en charge » au lieu de « rien trouvé ».
+  devient   : c'est un type MIME, et il fait la paire avec  .
+  : le retirer de la spec. La traduction n'a pas sa place dans le cœur (voir 2.5).
+  : utilisable tel quel.   pour une métadonnée,   pour un texte. Garder les offsets en octets UTF-8 (identiques dans les trois langages, corrects sur un   ou des  ) et garder   comme chemin normal. Seule la première occurrence est localisée, les autres ne sont comptées que dans la prose de   : à documenter.
+  : ne doit jamais changer le sens d'un verdict. Une retouche après création ne transforme pas   en autre chose sans que la règle soit écrite dans la spec. Détail en 2.9.
+
+2.5 Du rapport à un libellé d'interface
+
+Pas de fonction   dans la lib pour 0.1.0. Une table documentée, que l'application copie et traduit. La page de démo ( ) en est la référence.
+
+| Verdict | Libellé | Ne jamais écrire |
+|---|---|---|
+|   | Généré par IA : prouvé | |
+|   | Capture d'appareil : prouvée | « authentique », « non IA » |
+|   | Signal d'IA trouvé | « généré par IA » sans réserve |
+|   | Indices contradictoires | |
+|   | Rien trouvé | « humain », « authentique », « vérifié », une coche verte |
+
+ 
+
+2.6 Erreurs
+
+Règle unique : une exception pour une erreur de l'appelant ou du système, un avertissement pour un problème du contenu.
+
+| Cas | Comportement |
+|---|---|
+| Mauvais type d'argument, option inconnue,   invalide, PEM illisible |   (Node),   /   (Python) |
+| Fichier absent, dossier, permission, erreur de lecture | Node : promesse rejetée avec le message actuel (  standard  … : plus tard) ; Python :   (déjà le cas pour  ) |
+| Fichier corrompu, manifeste illisible, format inconnu | jamais d'exception ; rapport avec   |
+
+Aujourd'hui Node rejette avec  , et une erreur de lecture après ouverture (dossier, disque) rend un rapport  .
+
+2.7 Types
+
+TypeScript :  ,  ,  ,  , options sur  . Une phrase JSDoc sur chaque verdict pour que le survol de   dise « rien trouvé, ne veut pas dire humain ». Exporter  ,  ,  ,  ,  .
+Python :  ,  ,   en  ,   en  , fichier  .
+
+2.8 CLI
+
+ 
+
+Sortie par défaut (plus tard, voir section 5) : une ligne lisible par entrée,  , chemin, outil, compte des preuves et avertissements.
+
+   
+: accepté dès maintenant comme option sans effet, puisque la spec le documente ; ce sera le tableau JSON actuel, toujours un tableau, avec la clé   (à ajouter aux types comme champ propre à la CLI).
+et   maintenant ;   (stdin) plus tard.
+Codes de sortie : garder  ,  ,  , mais les documenter comme « trouvé / pas trouvé », jamais « OK ».
+
+| Code | Sens |
+|---|---|
+|   | aucune preuve ni signal d'IA ( ,  ). Ne veut pas dire « humain ». |
+|   | au moins une entrée  ,   ou   |
+|   | erreur d'usage ou de lecture sur au moins une entrée |
+
+2.9   et  , d'après le travail en cours
+
+Vu dans l'arbre de travail :   ;   ;  .
+
+  fait aujourd'hui la même chose que  . Une valeur publique sans effet surprend. Ne documenter que   et   pour 0.1.0, ou dire en toutes lettres que   est réservé.
+  ne lit pas le XMP. Un fichier dont le seul indice est l'IPTC rend donc   en  . Le rapport doit répéter le niveau ( ), et la doc de l'option doit le dire en une ligne.
+Le texte ignore   : l'accepter sans erreur dans  , pour garder un seul objet d'options.
+Casse des clés.   et   sont les premières clés du rapport en plusieurs mots. Choisir maintenant : garder   partout dans le JSON (identique dans les trois langages, critère 5) et le déclarer tel quel dans  . Ne pas convertir en   côté Node.
+  ne dit que des faits positifs, et aucune valeur ne signifie « retouché sans IA » : c'est le bon choix, à conserver.
+Forme stable :   et   toujours présents, comme   (point 3 de la section 4).
+Libellés : proposés dans   ( ).
+
+3. Avant / après sur les quatre tâches courantes
+
+Vérifier un texte
+
+ 
+
+Vérifier un fichier sur disque
+
+ 
+
+Vérifier un upload (octets en mémoire)
+
+ 
+
+ 
+
+Afficher le résultat
+
+ 
+
+4. À changer avant 0.1.0 (cassant, peu coûteux maintenant)
+
+Classé par importance. Aucun point ne touche aux règles de détection. Les points 1 à 5 tiennent en une journée ; le point 6 est déjà planifié à part.
+
+| # | Changement | Où | Estimation |
+|---|---|---|---|
+| 1 | Plus de   silencieux. Avertissement   pour un binaire inconnu ou un texte non UTF-8. Exception sur erreur de lecture, dossier, PEM illisible, option inconnue, mauvais type (retirer  ). | Cœur :   et   rendent un   au lieu d'un  , ce qui change leur signature pour la CLI et les deux bindings. Bindings : validation des arguments. | 2 h 30 |
+| 2 |   devient   /  , asynchrone en Node. | Bindings : renommage, et le même   que  . | 1 h |
+| 3 | Rapport à forme stable :   et   toujours présents ;   en   ;   renommé   ;   répété dans le rapport. | Cœur :  , sites d'émission des avertissements. Tests croisés à mettre à jour. | 2 h |
+| 4 | Types :   à jour, JSDoc par verdict ;   et   en Python. | Bindings. | 1 h |
+| 5 | Aligner spec, README et aide de la CLI :  , retrait de  ,  , clé  , codes de sortie. Le texte d'aide dit que   ne veut pas dire « humain ». Ajouter  . | Docs,  . | 1 h |
+| 6 | Liste de confiance C2PA embarquée par défaut,   la remplace. C'est le changement le plus visible pour l'utilisateur, mais il a déjà sa ligne dans la checklist de la spec (PEM versionné, workflow planifié) : hors de la journée. | Cœur, CI. | planifié |
+
+5. Plus tard
+
+Toutes les occurrences d'un motif ( ) et leur nombre en champ, au lieu de la seule première et d'un compte dans la prose.
+CLI : sortie lisible par défaut avec   pour le JSON (section 2.8), stdin ( ), NDJSON pour les gros lots. Cassant pour les scripts qui lisent la sortie : à faire avant 1.0, pas forcément avant 0.1.0.
+Erreurs Node avec   standard ( …) si napi-rs le permet simplement ; sinon garder le message actuel.
+Une fonction   seulement si plusieurs intégrateurs recopient la table.
+Entrée flux dans les bindings, seulement si un cas réel dépasse la mémoire et n'a pas de disque.
+Variante navigateur (WASM) :   et   uniquement, pas de  . La page   attend déjà ce contrat dans  .
+
+6. Points à vérifier par le développeur
+
+invalide : l'avertissement observé est une erreur d'analyse TOML sur la configuration JSON passée à  . Vérifier que ce n'est qu'un message de repli et que la configuration JSON est bien lue quand le PEM est valide.
+Une déclaration   d'un signataire hors liste donne   (preuve   d'origine capture, aucune règle ne la retient). C'est conforme à la spec, mais l'avertissement   devient alors la seule trace : raison de plus pour le rendre structuré.
+plus n'importe quel indice de capture, même   et non signé, donne  . Un simple champ XMP ajouté à la main fait donc tomber une preuve signée. À confirmer comme voulu.

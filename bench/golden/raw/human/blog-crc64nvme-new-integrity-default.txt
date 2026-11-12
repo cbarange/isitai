@@ -1,0 +1,98 @@
+A nightly backup starts answering  , and the message is about Content-MD5. No MD5 was ever sent: the SDK sends a base64 CRC now. Nothing in the repository changed between the last good run and the first bad one — a default did, and it decides which checksum travels with the object.
+
+The short version
+
+Since 1 December 2024 S3 stores a CRC-based checksum on every new object, even when the client sends none; the algorithm it picks for itself is CRC64NVME.
+The algorithm the client sends is a separate decision, and the clients disagree: AWS CLI v2 defaults to CRC64NVME, while boto3, Go, Java and JavaScript default to CRC32. One bucket can hold both without anyone choosing.
+Reading the value back is opt-in: without   a   returns no checksum at all, on an object that has one.
+A mismatch is  , whose documented text talks about Content-MD5 whatever you sent, and the SDK re-sends the whole request first — six attempts by default on one small object.
+The cost is CPU, not storage. A pure-Python CRC64NVME runs at 3.8 MiB/s on this machine against 5.86 GiB/s for the C library: 7.5 hours instead of 18 seconds for 100 GB.
+
+What actually happens
+
+The checksum is computed by the client, before the first byte moves. It travels as a header named after the algorithm —  ,   — with the 8-byte or 4-byte value base64-encoded, which is why a CRC64 looks like a twelve-character string such as  . As an   header on a signed request it joins  , so a middlebox that rewrites it breaks the signature, not the checksum.
+
+On arrival S3 recomputes the value over the bytes it received and compares. Equal: the object is stored and the checksum goes into its metadata, re-readable months later. Not equal: nothing is stored.
+
+Since 1 December 2024 that happens whether or not your code participates: the AWS announcement says S3 computes a CRC and stores it for new objects even when the client sends nothing, and the user guide adds that when neither you nor the SDK chooses an algorithm, S3 uses CRC64NVME. That page lists ten accepted algorithms, five added on 23 April 2026.
+
+ 
+
+Whether the stored value can verify a file depends on the checksum type. For a multipart upload it is either   — the checksum of the concatenated part checksums, exactly like a multipart ETag — or  , computed as if the object were one stream. Only the CRC family can linearise, so only CRC32, CRC32C and CRC64NVME support  , and a composite value cannot be compared with a CRC computed over the whole file.
+
+Where it bites
+
+I ran the cases against SeaweedFS 4.50 ( , a container on this machine) with   1.43.126. The object was 44,000 bytes, its CRC64NVME  .
+
+| Case | What the endpoint did |
+|---|---|
+|   with no checksum argument | SDK sent   on its own;  , CRC32 echoed back |
+| Correct CRC64NVME |  ,   in the response |
+| Wrong CRC64NVME |   — "The Content-MD5 you specified did not match what we received." |
+|   without checksum mode | no checksum field in the response |
+| Multipart, CRC64NVME,   | completed, checksum equal to the CRC64 of the concatenated parts |
+| Multipart, CRC64NVME,   |   — "Invalid Request" |
+
+ 
+
+The error names an algorithm you did not use.   is the documented code, and the error catalogue gives it one description: "The Content-MD5 you specified did not match what we received." SeaweedFS returned that sentence verbatim for a CRC64NVME mismatch, so a reader who trusts the text hunts a   header nobody has sent since 2024. Catch on the code instead.
+
+The retry re-sends the object. With the default retry configuration, botocore made six attempts at the 44,000-byte body before raising. A mismatch means the arriving bytes are not the sent bytes, so re-sending identical content is unlikely to help — but it happens anyway, and every attempt is a full payload. On a 100 MiB part that is 600 MiB on the wire, about 48 seconds per failed part at 100 Mbit/s: the same amplification as a multipart upload restarted instead of resumed.
+
+The constant is easy to get wrong by one nibble. CRC-64/NVME is published as polynomial  , init all-ones, xorout all-ones, reflected in and out. Fed least-significant-bit first, the constant that reproduces the published vectors is  . Bit-reversing the published polynomial by hand gives  , which yields   for   — a well-formed 8-byte checksum no endpoint will agree with, and nothing fails locally. Verify against the vectors first:
+
+ 
+
+ 
+
+Providers implement a subset, and the failure is not always a checksum error. Cloudflare R2 accepts CRC64NVME for   only and CRC32 for   only, per its compatibility table; CRC64NVME arrived for single and multipart objects on 3 July 2025. Before that, the CLI's move broke uploads against R2 with  . A header error surfaces before any data is validated, so a log grep for   finds nothing.
+
+Silence is the worst outcome. An object stored with a CRC32 while the reader expects CRC64NVME is not an error anywhere:   returns  , the script looks for  , finds nothing, and passes.
+
+Doing it right
+
+1. Choose the algorithm in the request, not in a comment. Pass it explicitly so the version of the SDK stops deciding for you.
+
+ 
+
+Telling the SDK to stop calculating at all is the other option —  , or   — right only when an endpoint rejects the header. Turning it off does not turn off what S3 stores.
+
+2. Compute it once, on the way past. The digest has to exist before the upload to be compared at all; a second read of the file afterwards measures the local copy twice and the network once.
+
+ 
+
+  ships with the AWS CRT and Go's   has  ; a Python loop is 1,500× slower, and the fast path is already in the SDK you installed.
+
+3. Ask for   when you intend to compare whole files. On  , set   with  . A   value answers a different question — whether the parts arrived intact — and cannot be compared to a CRC of the local file. Two 5 MiB parts of   and   returned  , the CRC64 of the concatenation, not of the part checksums.
+
+4. Read the value back deliberately.   or   with the same argument; without it the field is absent. On download, compare the returned base64 with your own value, or let the SDK do it via  .
+
+5. Prove it on the endpoint you deploy against. The probe creates a bucket called   and runs the table above in one command:
+
+ 
+
+A provider that answers   while storing nothing is what the table is for. The same principle governs presigned POST policies that cap size and content type: the server enforces what the request declares, so the declaration must be right before the upload starts.
+
+How S3 Explorer fits
+
+Which checksum an object carries, and which one the endpoint will return, differ per provider, so the useful check is a read against the real endpoint. S3 Explorer's provider picker holds 25 presets across Cloud, Specialist, Self-hosted and Enterprise plus a Custom tile, so an R2 bucket and an S3 bucket open from the same window. Its Metadata tab shows the headers the server returned, which is where a stored checksum appears when the endpoint sends one, and test connection reports how many buckets the credentials can see. S3 Explorer runs on Windows, macOS and Linux.
+
+Checklist
+
+[ ] Every upload path names its checksum algorithm, or documents the SDK default it relies on.
+[ ] The checksum is computed before the upload and compared with the value the server returns.
+[ ] Multipart paths that need whole-file verification declare  , and never compare a composite value to a local CRC.
+[ ] Downloads enable checksum mode, or the SDK validates the response.
+[ ] The reader accepts whichever algorithm the object carries, and a missing checksum fails the job.
+[ ] The CRC implementation is tested against the three published vectors, not only against itself.
+[ ]   is capped by the retry policy, not retried as a network error.
+
+Sources
+
+AWS — default data integrity protections, 1 December 2024: S3 stores a CRC on new objects even without one from the client;   with   or  ; the   example for  .
+AWS — checking object integrity: ten algorithms,   on a mismatch,   limited to CRC algorithms, CRC64NVME when nothing is specified, and REST calls using  .
+AWS SDK data integrity protections: per-SDK defaults (CLI v2 CRC64NVME; boto3, Go, Java, JavaScript CRC32) and the   /   settings.
+S3 error catalogue:  , 400, "The Content-MD5 you specified did not match what we received."
+GetObject and HeadObject: "To retrieve the checksum, this mode must be enabled".
+R2 S3 compatibility: CRC64NVME   only, CRC32   only; release notes, 3 July 2025.
+Measured 9 November 2026 against SeaweedFS 4.50 with   1.43.126 and  ; the probe is  .

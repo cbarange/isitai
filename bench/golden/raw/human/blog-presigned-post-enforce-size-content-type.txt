@@ -1,0 +1,107 @@
+Every "upload directly to S3" feature starts the same way: the server hands the browser a presigned URL, the browser PUTs the file, the object appears. It ships in ten minutes, and quietly grants anyone holding that link the right to store four gigabytes of anything in your bucket. The fix is a different primitive: a presigned POST, where the permission is a document stating the size and type it will accept, signed before a single byte moves.
+
+The short version
+
+A presigned URL signs one request — a host, a path, a verb. It never says how many bytes may follow.
+A presigned POST signs a policy: a short JSON document listing conditions the upload must satisfy, such as a byte range and a content-type prefix.
+S3 checks the policy first, then counts the body as it arrives. An oversized file stops at   and nothing is stored.
+The limit lives in the signature, so it holds even if the browser is modified or replaced by  .
+The hours are in the audit, not the fix. The policy is ten lines; finding the stray objects that got past the old endpoint means listing the bucket and sorting by size.
+
+What actually happens
+
+A presigned PUT is an HMAC over a canonical request: method, host, path, and the headers you chose to sign. The body is not part of it. The signature says "PUT to this key is allowed until this time", and the client decides what to send. You can sign   so a different type fails with  , which is a type check and not a size check — the length is still whatever the client announces.
+
+A presigned POST moves the constraints inside the signature. You write a policy document, base64-encode it, and HMAC-SHA256 the base64 with the signing key derived from your secret, the date, the region and  . That signature goes back to the client as a form field, with the encoded policy beside it. The browser then builds a   body: the auth fields, whatever metadata you allowed, and the file.
+
+The policy has two parts.   is an ISO8601 timestamp.   is an array where each entry is an exact match ( ), a prefix ( ), or the one numeric range the format supports:  , inclusive at both ends, in bytes. The array can also carry  ,  ,  ,  ,  ,   and the storage class.
+
+ 
+
+One detail catches people who read the policy as plain string matching: in a   condition on  , comma-separated values are treated as a list and every item has to pass. So   accepts   and rejects  . Other fields are compared as strings, commas included.
+
+The   field supports  , expanded from the client's filename before any condition is evaluated — which is why the condition tests the prefix   and not  . AWS is explicit about that ordering.
+
+Where it bites
+
+Four checks run in a fixed order, each with its own error. The status codes overlap, so read the body.
+
+| Response | Error code | What it means |
+|---|---|---|
+|   |   | Over the maximum. The body carries   and   |
+|   |   | Under the minimum. Carries   |
+|     |   | A condition did not match; the failing condition is quoted back |
+|     |   | The form sent a field the policy never declared |
+|     |   | The   timestamp has passed |
+|   |   | "The content of the form does not meet the conditions specified in the policy document" |
+|   |   | Everything before the file part exceeded 20 KB |
+|   |   | POST takes exactly one file per request |
+
+The limit is enforced while streaming. S3 counts the file part as the body arrives, stops reading the moment the counter passes  , and stores nothing partial — a documented property of the operation, not something to hope for.
+
+The form has a size of its own. Form data and boundaries, excluding the file contents, cannot exceed 20 KB. A normal policy is under 1 KB, so you only meet this by stuffing base64 thumbnails into  ; that metadata belongs in your database.
+
+The file must be the last field. AWS says it twice: "make sure that the file field is the last field in the form". Put   after it and the key arrives missing.
+
+No size cap on a PUT. There is no   equivalent in a PUT signature; the nearest thing is signing a   header, which browsers do not let JavaScript set. That gap is what keeps the insecure pattern alive.
+
+Provider deviation is real, and one is fatal. Cloudflare R2 documents that   — form uploads via HTML forms — "is not currently supported", and answers  , so the cap has to move to a Worker check or a HEAD-and-delete. MinIO implements it: its Java SDK ships a   class with  . Test the endpoint you actually run before promising a cap.
+
+A delete is not a refund. With versioning on, removing an oversized object leaves a noncurrent version, which stays billable.
+
+The browser hides the reason. When S3 stops reading a body the client is still writing, the socket drops mid-send and   often reports a network error instead of the  . Keep a   check so the common case produces a sentence a human can act on — and do not mistake it for a control: it is removable in one keystroke, and the policy is what remains.
+
+Doing it right
+
+1. Write the policy with the four conditions that matter. Bucket, key prefix, byte range, content type.
+
+ 
+
+  makes S3 answer with an XML document containing the  ; the default is   with an empty body, which leaves you nothing to confirm the upload with.
+
+2. Post the fields first, the file last. Any client that appends   after   gets the ordering right by construction.
+
+ 
+
+3. Replay the policy with a file that breaks it, before you ship it. Twelve megabytes against a ten-megabyte limit should return   with this body:
+
+ 
+
+A   with "Policy Condition failed" instead means the form is not sending the field the condition demands — usually a missing   on the file part.
+
+4. Check what actually landed.
+
+ 
+
+5. Where POST is unavailable, enforce outside the signature. A Worker, a reverse proxy or a gateway can read   before accepting the body; HEAD-then-delete is the fallback and is not atomic. Name the one you rely on in the runbook.
+
+How S3 Explorer fits
+
+A policy states what a client may send; the object records what it sent, and the two disagree more often than expected — a   that is quietly   because the browser omitted it.
+
+S3 Explorer shows both sides. Bucket and folder browsing reaches the uploaded key, the Content and Metadata tabs show the stored content type, size and user metadata exactly as S3 holds them, and the image preview shows whether that stored type is the one a browser will render. Multiple connection profiles let you post the same form to AWS and to a compatible endpoint, and compare the results. S3 Explorer runs on Windows, macOS and Linux.
+
+The other half of the same problem — how long the permission lasts — is covered in presigned URLs expire at seven days.
+
+Checklist
+
+[ ] No upload path issues a presigned PUT to an untrusted client; each uses a POST policy with  .
+[ ] The policy pins the bucket and a key prefix, so a client cannot write outside its own folder.
+[ ]   has a   condition and the form sends the field, rather than letting the browser guess.
+[ ] A 12 MB file has been posted against a 10 MB policy and returned   with  .
+[ ] The multipart body was read directly: no field the policy does not declare, and the file is last.
+[ ] Every provider in the deployment is tested for POST Object support; the R2-style   has a named fallback.
+[ ] The client still checks   for the user's benefit, and the code says it is not a security control.
+[ ]   is   and the returned   is stored against the object key.
+
+Sources
+
+Amazon S3 — POST Object: form fields,    / /  (default  ), "the file field is the last field in the form", one file per request, no partial objects.
+Amazon S3 — POST policy: exact,   and   conditions, the comma-separated   rule,   expansion before matching.
+Amazon S3 — HTML forms: "form data and boundaries (excluding the contents of the file) cannot exceed 20 KB".
+Amazon S3 — Error responses:  ,  ,  ,  ,  .
+Amazon S3 — Uploading objects: a single PUT operation is limited to 5 GB, also the ceiling for a single POST.
+Cloudflare R2 — Presigned URLs: "  … is not currently supported"; signing   on a PUT yields   when it changes.
+MinIO Java SDK —  ,  :  , "file must be added at last".
+
+Error strings and limits read from vendor documentation on 1 November 2026, quoted rather than paraphrased.

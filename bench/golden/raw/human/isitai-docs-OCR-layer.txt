@@ -1,0 +1,471 @@
+Couche OCR — recherche et essai du 2026-11-12
+
+Document de recherche. Aucun code du dépôt n'a été modifié. Il complète  .
+
+Réserves de la relecture indépendante
+
+Une relecture contradictoire a recalculé les chiffres : ils sont exacts. Elle a trouvé des conclusions trop fortes dans le texte qui suit. À lire avant le résumé :
+
+« Les règles ne survivent pas à l'OCR » est le pire cas. 22 occurrences sur 88 vaut pour la police SF seule ; le même modèle donne 49 sur 88 en Verdana et 45 sur 88 en Georgia. Huit occurrences étaient impossibles à lire pour tout moteur (URL coupée par le rendu), donc la base réelle est 80.
+L'essai porte sur des rendus synthétiques, pas sur de vraies captures. 72 images sur 73 sont générées avec Pillow ; la seule image réelle ne contient pas de texte. Aucune bulle de conversation, aucun emoji, aucun code.
+Petit échantillon. Deux textes écrits à la main portent les artefacts, avec un seul exemple par règle. Les règles testées sont elles-mêmes marquées non vérifiées dans  .
+Le taux d'erreur par mot est plus haut que le taux par caractère cité : 13,1 % sur un rendu bureau net et 26,4 % sur un rendu bureau dégradé. Cela compte pour un futur classifieur de texte.
+La référence macOS Vision est inutilisable sur le petit texte : elle a perdu des lignes entières, pour une cause non établie. Ses lignes dans les tableaux mesurent surtout cette perte. La recette « Vision sur macOS » n'est donc pas étayée.
+Une seule comparaison valable (tesseract.js en WebAssembly, pas Tesseract natif), et des temps pris sur une machine chargée.
+
+Convention de marquage :
+
+[P] : publié. Chiffre lu dans une source citée, non reproduit ici.
+[M] : mesuré ici, le 2026-11-12, sur macOS arm64, 10 cœurs, 24 Go, CPU seul. Un autre banc tournait sur la machine : tout temps et toute mesure mémoire sont indicatifs.
+[J] : jugement du rédacteur, non mesuré.
+non trouvé : cherché, absent des sources lues. Rien n'est estimé à la place.
+
+Sources primaires, abrégées dans le texte :
+
+| Abrégé | Source |
+|---|---|
+| Article | arXiv 2606.13108, « PaddlePaddle Team, Baidu », v1 du 11 juin 2026 — https://arxiv.org/abs/2606.13108 |
+| HF | Collection et dépôts Hugging Face — https://huggingface.co/collections/PaddlePaddle/pp-ocrv6 |
+| Notes | Notes de version PaddleOCR v3.7.0 — https://github.com/PaddlePaddle/PaddleOCR/releases/tag/v3.7.0 |
+| Doc | https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/algorithm/PP-OCRv6/PP-OCRv6.en.md |
+| SDK | PaddleOCR.js — https://github.com/PaddlePaddle/PaddleOCR/tree/main/paddleocr-js et paquet npm   0.4.2 |
+| Dict |   et   du dépôt PaddleOCR |
+
+1. Résumé
+
+1. PP-OCRv6 existe, publié par Baidu le 2026-06-11, code et poids sous Apache-2.0 [P]. Le fil est un partenariat rémunéré : plusieurs de ses formules sont fausses ou trompeuses.
+2. « Tiny 1,5 Mo » est faux : 1,5 M est un nombre de paramètres. Les deux fichiers ONNX pèsent 6,24 Mo [M]. « 97 ms » n'est dans aucune source primaire. « Le seul OCR précis dans un navigateur » est faux.
+3. Tous les scores du fil viennent de bancs internes à Baidu, non publiés. Aucune évaluation indépendante des poids v6 n'a été trouvée.
+4. Essai ici : PP-OCRv6 tiny tourne sans PaddlePaddle et lit bien le texte latin d'une capture. Taux d'erreur par caractère : 0,3 % en taille téléphone, 1,4 % en petit texte de bureau [M].
+5. Mais les règles d'isitai, telles qu'écrites, ne survivent pas à l'OCR. Avec tiny et la police SF, 22 occurrences d'artefact sur 88 correspondent encore ; le verdict   est conservé dans 11 rendus sur 16 [M].
+6. La cause n'est pas la qualité générale. Ce sont quelques confusions sur les caractères dont les regex ont besoin :   lu  ,   lu  , point perdu dans  , espaces,  / .
+7. Avec des motifs tolérants exploratoires, la même sortie de tiny donne 83/88 (SF) [M]. C'est une borne haute : les motifs ont été ajustés sur les ratés qu'ils corrigent.
+8. Tiny ne lit ni le russe ni les kana japonais, et le fait sans erreur ni avertissement [M].
+9. L'OCR ne règle pas la capture d'une image IA sans texte : elle reste  .
+10. Recommandation : pas d'OCR dans le cœur. D'abord rendre   utilisable sur un texte venu d'un OCR (variantes tolérantes, preuve marquée « lu par OCR »), sans dépendance. Un paquet optionnel   ne se décide qu'après le spike de moteur déjà prévu par la feuille de route.
+
+2. Les affirmations du fil, une par une
+
+Deux réserves valent pour tout le tableau. Le fil est marqué « partenariat rémunéré ». Le graphique qu'il reprend compare une chaîne OCR spécialisée à des modèles vision-langage généralistes, sur des données de Baidu, avec un protocole non publié pour ces modèles (invites, résolution, format des boîtes) [P, Article : rien sur ces points].
+
+| # | Affirmation du fil | État | Source primaire et remarque |
+|---|---|---|---|
+| 1 | PP-OCRv6, Baidu, vers juin 2026 | confirmée | Notes : v3.7.0 du 2026-06-11 [P] |
+| 2 | Trois paliers Tiny / Small / Medium | confirmée | HF, Article [P] |
+| 3 | Tiny « 1,5 Mo » | contredite | 1,5 M est le nombre de paramètres (Article, tableau 2) [P]. Fichiers ONNX : 1 780 590 + 4 462 639 = 6 243 229 octets (HF) [P], vérifié sur disque [M] ; 5,70 Mo après gzip [M] |
+| 4 | Small 7,7 M, Medium 34,5 M de paramètres | confirmée | Article, tableau 2 [P]. Comptage dans les fichiers ONNX : 1,53 M, 7,72 M, 34,60 M [M]. Anomalie : le fichier safetensors de   annonce 21,99 M contre 15,5 M dans l'article ; cause non vérifiée |
+| 5 | Tiny tourne dans le navigateur | confirmée | Pris en charge par le SDK via   [P]. Tiny a tourné ici en WebAssembly, dans Node, pas dans un navigateur [M]. Aucune vitesse ni précision navigateur n'est publiée |
+| 6 | Paliers = navigateur / mobile / serveur | contredite | Les sources disent embarqué-IoT / mobile-bureau / serveur. Dans le SDK,   charge small, pas tiny [P, SDK] |
+| 7 | Une image en 97 ms | non trouvée | Absent de l'Article, des Notes, de la Doc, des cartes de modèle et du README du SDK. Vu sur un agrégateur (ai-bot.cn) sans matériel indiqué. Plus bas chiffre publié de bout en bout : 0,13 s (tiny, GPU A100) ; sur CPU : 0,20 s (tiny, Xeon, OpenVINO) [P, Article tableau 9] |
+| 8 | Un modèle pour 50+ langues | contredite | 50 pour small et medium, 49 pour tiny (sans le japonais) ; une carte dit 48 [P]. Chinois, japonais et écriture latine seulement. Et il y a deux modèles par palier, pas un |
+| 9 | Medium : détection 86,2, reconnaissance 83,2 | confirmée | Article [P]. Bancs internes (« our in-house benchmarks »), non publiés |
+| 10 | Tiny : détection 80,6, reconnaissance 73,5 | confirmée | Article [P], mêmes bancs |
+| 11 | Au-dessus de PP-OCRv5 | confirmée | Vrai pour medium et small sur ces bancs. Faux pour tiny : détection 80,6 contre 81,6 pour PP-OCRv5_server ; reconnaissance 73,5 contre 73,7 pour PP-OCRv5_mobile [P] |
+| 12 | Au-dessus de GPT-5.5, Gemini-3.1-Pro, Qwen3-VL-235B | confirmée | Vrai pour medium et small, sur les bancs de Baidu seulement, non reproduit. Tiny en reconnaissance (73,5) est sous Qwen3-VL-235B (74,9) [P]. Comparaison non équitable, voir ci-dessous |
+| 13 | Correspondance exacte 93,2 % contre 80,6 % pour Qwen3-VL-235B | contredite | Chiffres exacts, libellé faux. C'est l'exactitude sur un « hallucination benchmark » construit par Baidu (Article, tableau 7), palier medium. Le fil omet Kimi-K2.6 à 85,00 et tiny à 86,80 [P] |
+| 14 | Détection et reconnaissance partagent un backbone | contredite | Même architecture (LCNetV4), réglée différemment. Deux modèles, deux fichiers de poids, deux inférences [P, Article et HF ; M, fichiers inspectés] |
+| 15 | « Le seul OCR de haute précision qui tourne dans un navigateur » | contredite | PaddleOCR.js faisait déjà tourner PP-OCRv5 dans le navigateur depuis la v3.5.0 (2026-04-21) [P]. tesseract.js existe depuis 2015 [P] |
+| 16 | Entièrement open source, GitHub et Hugging Face | confirmée | Code et poids Apache-2.0, configurations d'entraînement présentes [P]. Les données d'entraînement et les bancs ne sont pas publiés |
+| 17 | paddleocr.com comme source | non trouvée | La page n'a rendu qu'une coquille JavaScript de 2 383 octets ; contenu non lu |
+
+Pourquoi la comparaison avec les modèles vision-langage n'est pas équitable [J, appuyé sur les sources] :
+
+Le score de détection (Hmean) note la géométrie des boîtes. Un modèle généraliste n'est pas entraîné à produire des polygones serrés : un score bas dit « mauvais en boîtes », pas « ne sait pas lire ». L'écart en détection est énorme (86,2 contre 46,8 au mieux), l'écart en reconnaissance bien plus petit (83,2 contre 74,9) [P].
+Le protocole appliqué aux modèles généralistes n'est pas décrit.
+Les bancs sont privés et construits par le vendeur. Ils sont dominés par le chinois ; seules deux catégories sont en écriture latine, aucune en français [P, Article].
+Un banc indépendant sur des pages de documents (OmniDocBench, CVPR 2025, distance d'édition, plus bas = mieux) donne en anglais PaddleOCR 0,071 contre GPT-4o 0,020 [P, https://arxiv.org/abs/2412.07626]. Version de PaddleOCR non précisée, antérieure à la v6.
+
+3. Ce que PP-OCR est vraiment
+
+3.1 Modèles et tailles
+
+Chaque palier contient deux modèles distincts : détection des lignes de texte ( ), puis reconnaissance de chaque ligne ( ). Trois formats par modèle : Paddle, ONNX, safetensors [P, HF].
+
+| Modèle | Fichier ONNX (octets) [P, HF ; M sur disque] | Paramètres, Article [P] | Paramètres comptés dans l'ONNX [M] |
+|---|---|---|---|
+| tiny_det | 1 780 590 | 0,43 M | 428 420 |
+| tiny_rec | 4 462 639 | 1,1 M | 1 104 524 |
+| small_det | 9 880 512 | 2,48 M | 2 453 368 |
+| small_rec | 21 159 378 | 5,2 M | 5 267 732 |
+| medium_det | 62 032 837 | 15,5 M | 15 486 640 |
+| medium_rec | 76 554 979 | 19 M | 19 115 263 |
+
+| Palier | Paire ONNX det + rec | Paramètres (Article) |
+|---|---|---|
+| tiny | 6 243 229 octets, environ 6,2 Mo | 1,5 M |
+| small | 31 039 890 octets, environ 31 Mo | 7,7 M |
+| medium | 138 587 816 octets, environ 139 Mo | 34,5 M |
+
+Poids en float32. Aucune variante quantifiée n'est publiée dans la collection [P]. Gzip gagne environ 10 % [M].
+Le dictionnaire de caractères est dans le fichier   du modèle   : 55 571 octets pour tiny, 150 580 pour small et medium [P].
+Opérateurs ONNX : tous dans le domaine standard, aucun opérateur maison ; opset 14 (det) et 11 (rec) [M].
+Licence : Apache-2.0 pour le code et pour les 18 cartes de modèle [P].
+
+3.2 Langues et caractères
+
+| Point | Tiny | Small et medium | Source |
+|---|---|---|---|
+| Langues annoncées | 49 (sans le japonais) | 50 : chinois simplifié et traditionnel, anglais, japonais, 46 langues en écriture latine | [P] Article tableau 10, Doc |
+| Entrées du dictionnaire | 6 904 | 18 708 | [P] Dict, premier relevé |
+| Cyrillique, arabe, hébreu, devanagari, thaï, hangul | 0 | 0 | [P] Dict |
+| Kana japonais | 0 | présents | [P] Dict |
+| Caractères français testés (accents, capitales, « » € ’ – — … °) | tous présents | tous présents | [P] Dict |
+| Emoji hors plan de base | aucun | 904 | [P] Dict, second relevé |
+| Exactitude publiée, écriture latine (banc interne) | 63,8 % | 84,0 % / 88,0 % | [P] Article tableau 11 |
+| Exactitude publiée, anglais (banc interne) | 77,3 % | 86,3 % / 88,4 % | [P] idem |
+
+Sur le même tableau, l'ancien modèle   fait 81,4 % en écriture latine : par les chiffres de Baidu, tiny v6 lit le latin moins bien que le modèle latin v5 [P]. Sa taille n'a pas été relevée.
+Écart entre relevés : un second comptage du dictionnaire donne 6 905 et 18 709 entrées, avec une répartition par écriture un peu différente. L'écart n'est pas expliqué. Il ne change pas les conclusions (pas de cyrillique, pas de kana dans tiny).
+Caractères absents des deux dictionnaires :   ; dans tiny en plus :   [P, Dict]. Un modèle de ce type ne peut émettre qu'un caractère de son dictionnaire (ticket #18403, confirmé par un mainteneur) [P].
+Les cartes de modèle contiennent des incohérences (langues, intitulés, étiquettes) [P, HF].
+
+3.3 Étapes de la chaîne
+
+1. Optionnel : classifieur d'orientation de page, redressement, classifieur d'orientation de ligne. Ce sont trois autres modèles, hors collection ; tailles non relevées. Le SDK navigateur les désactive par défaut [P].
+2. Détection : une carte de probabilité de texte.
+3. Reconnaissance : une chaîne de caractères par ligne détectée.
+
+3.4 Ce qu'il faut coder autour des modèles
+
+Rien de ce qui suit n'est dans les fichiers ONNX [P, SDK ; M, graphes inspectés] :
+
+| Étape | Travail |
+|---|---|
+| Avant la détection | redimensionner, arrondir chaque côté à un multiple de 32, ordre BGR, normaliser, mettre en CHW float32 |
+| Après la détection | binariser la carte, trouver les contours, rectangle d'aire minimale, score par boîte, écarter les petites boîtes, dilater le polygone, remettre à l'échelle |
+| Découpe | ordonner les 4 points, transformation en perspective, rotation de 90° si la boîte est haute |
+| Avant la reconnaissance | hauteur 48, largeur variable, normaliser, compléter le lot à droite |
+| Décodage | CTC glouton : argmax, fusion des répétitions, retrait du blanc, table du dictionnaire |
+| Ordre de lecture | tri des boîtes ; pas d'analyse de mise en page dans la chaîne OCR simple |
+
+Deux pièges relevés :
+
+Trois jeux de seuils de détection par défaut coexistent (fichier  , configuration PaddleX, configuration safetensors) [P]. Le résultat dépend du jeu choisi.
+Les piles JavaScript s'appuient sur OpenCV.js pour ces étapes : 10,4 Mo brut, 3,38 Mo gzippé pour   4.10 [P]. En Rust, la taille de cette « colle » n'a pas été mesurée.
+
+3.5 Vitesse publiée
+
+De bout en bout, secondes par image, 200 images, entrées-sorties disque comprises [P, Article tableau 9]. Nombre de fils et réglages CPU non vérifiés.
+
+| Matériel / moteur | medium | small | tiny |
+|---|---|---|---|
+| NVIDIA A100 / PaddlePaddle | 0,29 | 0,25 | 0,13 |
+| Xeon 8350C / OpenVINO | 1,40 | 0,59 | 0,20 |
+| Xeon 8350C / ONNX Runtime | 3,31 | 0,61 | 0,22 |
+| Apple M4 / ONNX Runtime | 5,55 | 1,29 | 0,35 |
+
+Aucune latence navigateur (WASM ou WebGPU) n'est publiée.
+
+3.6 Signaux indépendants
+
+Aucune évaluation indépendante des poids v6 publiés n'a été trouvée. Ce qui existe :
+
+| Source | Ce qu'elle dit | Portée |
+|---|---|---|
+| Kiessling, arXiv 2609.20064 (Inria) | Architecture de reconnaissance v6 réentraînée sur un autre corpus : CER 14,25 % pour tiny, contre 10,84 % pour un CRNN classique, 9,33 % pour small, 7,03 % pour medium [P] | Ne teste pas les poids de Baidu. Indique que tiny est le maillon faible |
+| Ticket #18403 (ouvert) | Guillemets allemands   absents du dictionnaire : 53 guillemets ouvrants perdus sur 5 pages [P] | Une source, confirmée par un mainteneur |
+| Ticket #18364 (ouvert, sans réponse) | L'ONNX   rendrait les caractères non ASCII en mojibake avec onnxruntime 1.19.2 et onnxruntime-web [P] | Un seul rapport. Non reproduit ici avec onnxruntime 1.31.1 en Python, sur tiny et small [M]. Non infirmé pour le navigateur |
+| Ticket #18320 (ouvert) | 7 à 9 s par image de facture sur 4 vCPU [P] | Un seul rapport |
+| Ticket #18395 (ouvert) | Vietnamien non reconnu par medium bien qu'annoncé [P] | Un seul rapport |
+
+4. Essai sur de vraies images
+
+Tous les chiffres de cette section sont [M], dans les conditions du 4.1. Les temps et la mémoire sont indicatifs (machine chargée, charge moyenne de 5 à 13 sur 10 cœurs, fils non contrôlés).
+
+4.1 Protocole
+
+| Élément | Choix |
+|---|---|
+| Modèles PP-OCR | ONNX officiels tiny et small (medium non essayé) |
+| Moteur | onnxruntime 1.31.1, Python, macOS arm64 |
+| Colle | celle de   3.10.0, avec la normalisation du fichier   et les seuils PaddleX. Ce n'est pas la chaîne de Baidu, ni rten, ni tract, ni un navigateur |
+| Variante   | image agrandie 2 fois (bicubique) avant OCR |
+| Comparaison 1 | tesseract.js 7.0.0 (Tesseract 5 en WebAssembly, dans Node 24 ; pas Tesseract natif). Langues   ;   et   fournis pour les images russes et japonaises, avantage que PP-OCR n'a pas eu |
+| Comparaison 2 | Vision de macOS 27.2 ( , niveau précis), sans ( ) et avec ( ) correction linguistique |
+| isitai | wheel construit depuis le dépôt, lib 0.1.0-alpha.0, hash des règles   |
+| Images | 72 images synthétiques : 9 textes × 2 profils × 2 thèmes × (net, dégradé) |
+| Textes | début de   (fr) et de six textes Wikipédia (fr, en, es, de, ru, ja), 1 200 caractères chacun ; deux textes d'artefacts,   (559 caractères) et   (566) |
+| Profils |   : 780 px de large, police 32 px.   : 1 200 px, police 15 px. Le profil bureau change à la fois la taille de police et la longueur de ligne |
+| Thèmes | clair et sombre, police SF |
+| Dégradé | JPEG qualité 60, puis réduction à 70 % |
+| Polices supplémentaires |   et   rendus aussi en Verdana et en Georgia (16 images chacune) |
+| Image réelle | 1 seule :  , un paysage sans aucun texte |
+
+Limites à garder en tête : rendus synthétiques, droits, sur une seule colonne. Aucune vraie capture de conversation avec du texte, pas de bulles, pas de bloc de code, pas d'emoji, pas de photo d'écran, pas de PDF image.
+
+Image réelle sans texte : PP-OCR (tiny et small) et Vision rendent 0 ligne. tesseract.js invente 19 lignes de déchets (« EME », « AM », « EA »…) ; isitai sur ces déchets répond  , sans preuve.
+
+4.2 Précision par langue et par rendu
+
+Taux d'erreur par caractère (CER, %), après NFKC, moyenne des thèmes clair et sombre. Colonnes : bureau net / bureau dégradé / téléphone net / téléphone dégradé.   = moyenne des deux textes français.
+
+| Langue | v6tiny | v6small | tesseractjs | vision-nocorr |
+|---|---|---|---|---|
+| en | 0,7 / 2,6 / 0,1 / 0,1 | 0,5 / 0,9 / 0,0 / 0,1 | 1,3 / 6,3 / 0,0 / 0,0 | 50,5 / 22,0 / 0,1 / 0,1 |
+| fr | 2,3 / 4,0 / 0,4 / 0,5 | 2,0 / 2,8 / 0,1 / 0,3 | 2,4 / 9,3 / 0,7 / 0,6 | 48,8 / 44,2 / 0,8 / 0,8 |
+| es | 0,7 / 3,6 / 0,2 / 0,1 | 0,8 / 1,2 / 0,0 / 0,2 | 1,4 / 6,1 / 0,4 / 0,3 | 30,0 / 32,5 / 0,3 / 0,0 |
+| de | 1,2 / 3,8 / 0,3 / 0,3 | 1,1 / 1,4 / 0,2 / 0,3 | 0,7 / 4,7 / 0,3 / 0,5 | 28,8 / 31,5 / 0,3 / 0,2 |
+| ru | 83,5 / 83,9 / 83,1 / 83,1 | 95,8 / 95,3 / 94,3 / 94,4 | 2,4 / 6,8 / 2,0 / 2,1 | 50,4 / 3,1 / 0,6 / 0,7 |
+| ja | 61,7 / 62,4 / 61,6 / 61,6 | 0,1 / 0,1 / 0,0 / 0,1 | 1,3 / 4,9 / 1,2 / 1,1 | 1,1 / 50,9 / 1,1 / 0,9 |
+
+Textes en écriture latine seulement (en, fr, es, de ; 40 images par moteur). CER % après NFKC, et taux d'erreur par mot (WER %) :
+
+| Moteur | CER, tout | CER bureau net | CER bureau dégradé | CER téléphone net | CER téléphone dégradé | WER, tout |
+|---|---|---|---|---|---|---|
+| v6tiny | 1,4 | 1,4 | 3,6 | 0,3 | 0,3 | 11,0 |
+| v6small | 0,9 | 1,3 | 1,8 | 0,1 | 0,2 | 7,8 |
+| tesseractjs | 2,4 | 1,6 | 7,1 | 0,4 | 0,4 | 12,8 |
+| vision-nocorr | 19,3 | 41,4 | 34,9 | 0,5 | 0,4 | 25,8 |
+
+Lecture :
+
+En écriture latine, PP-OCR tiny et small lisent en moyenne au moins aussi bien que tesseract.js, et mieux sur le bureau dégradé. Exception : l'allemand sur bureau net (0,7 pour tesseract.js contre 1,2 et 1,1).
+La moitié de l'erreur de PP-OCR sur bureau est de l'espacement : le CER de tiny passe de 1,4 % à 0,7 % si l'on ignore les espaces. Le WER de 13,1 % sur bureau net vient surtout de mots collés (« deneige », « threelarge », « mylast »).
+NFKC ne change rien de mesurable. Replier guillemets et tirets typographiques gagne 0,1 à 0,2 point.
+Le thème sombre n'est pas un problème : tiny 1,2 % en clair contre 1,6 % en sombre ; small 0,9 % et 0,9 %.
+Agrandir 2 fois ne change presque rien sur image nette (0,0 à 0,8 point) ; tiny s'améliore un peu sur bureau dégradé (en : 2,6 à 2,0).
+Vision sur le profil bureau perd des lignes entières (4 lignes rendues sur 8 pour un texte anglais). Les 41,4 % sont de la perte de lignes, pas de la mauvaise lecture. Cause non établie.
+Ordre de lecture : 0 image avec des lignes dans le désordre, pour tous les moteurs. Texte sur une colonne seulement.
+
+Accents et écritures (part des caractères de référence restitués intacts, net / dégradé) :
+
+| Classe (nombre) | v6tiny | v6small | tesseractjs | vision-nocorr |
+|---|---|---|---|---|
+| Latin accentué (468) | 100,0 % / 92,5 % | 100,0 % / 98,1 % | 90,4 % / 79,7 % | 73,1 % / 65,8 % |
+| Cyrillique (3 880) | 0 % / 0 % | 0 % / 0 % | 100,0 % / 98,7 % | 75,0 % / 99,3 % |
+| Kana (2 772) | 0 % / 0 % | 100,0 % / 99,9 % | 99,9 % / 99,7 % | 99,9 % / 75,0 % |
+| Han (1 388) | 90,6 % / 89,9 % | 99,9 % / 99,8 % | 97,8 % / 92,7 % | 98,1 % / 73,1 % |
+
+Les accents français sortent correctement. Pas de mojibake.
+Le russe est perdu d'avance : aucun palier v6 n'a de cyrillique. La sortie est un charabia de lettres latines ressemblantes, émis sans erreur. Tiny perd aussi tous les kana.
+
+4.3 Survie des règles d'isitai après OCR
+
+C'est le résultat principal de l'essai.
+
+Point de départ : sur le texte source, les deux textes d'artefacts donnent   avec les 4 règles testables ( ,  ,  , fortes ;  , faible). Les 7 textes ordinaires donnent  , et restent   après OCR pour tous les moteurs : 0 changement de verdict, 0 faux positif.
+
+  n'est pas testable : un caractère invisible n'existe pas dans une image.
+
+Occurrences d'artefact qui correspondent encore à la regex exacte du dépôt, police SF. 8 rendus par occurrence, 16 quand l'occurrence est dans les deux textes :
+
+| Moteur |   |   |   |   | As an AI language model, I | As of my last knowledge update | En tant qu'IA, je | En tant que modèle de langage, je | Total |
+|---|---|---|---|---|---|---|---|---|---|
+| v6tiny | 2/16 | 4/8 | 0/16 | 2/16 | 1/8 | 6/8 | 2/8 | 5/8 | 22/88 |
+| v6tiny-up2 | 4/16 | 6/8 | 0/16 | 3/16 | 0/8 | 4/8 | 0/8 | 4/8 | 21/88 |
+| v6small | 12/16 | 4/8 | 2/16 | 0/16 | 0/8 | 5/8 | 0/8 | 5/8 | 28/88 |
+| v6small-up2 | 15/16 | 5/8 | 3/16 | 1/16 | 0/8 | 5/8 | 0/8 | 6/8 | 35/88 |
+| vision-nocorr | 7/16 | 0/8 | 0/16 | 4/16 | 0/8 | 6/8 | 4/8 | 6/8 | 27/88 |
+| vision-corr | 5/16 | 0/8 | 0/16 | 3/16 | 0/8 | 8/8 | 4/8 | 7/8 | 27/88 |
+| tesseractjs | 8/16 | 0/8 | 0/16 | 0/16 | 0/8 | 6/8 | 0/8 | 3/8 | 17/88 |
+
+Sur le profil téléphone, l'URL est coupée au milieu du jeton par le retour à la ligne (  /  ) dans les 8 rendus : ces 8 occurrences   ne peuvent correspondre pour aucun moteur.
+
+Verdict   conservé (sur 8 rendus par texte, police SF). Il suffit qu'une règle forte survive, d'où un verdict plus stable que les occurrences :
+
+| Moteur |   |   |
+|---|---|---|
+| v6tiny | 6/8 | 5/8 |
+| v6small | 8/8 | 8/8 |
+| vision-nocorr | 6/8 | 6/8 |
+| vision-corr | 8/8 | 7/8 |
+| tesseractjs | 6/8 | 5/8 |
+
+Par rendu, v6tiny (occurrences non coupées par le retour à la ligne) : bureau net 6/22, bureau dégradé 1/22, téléphone net 7/18, téléphone dégradé 8/18. v6small : 8/22, 4/22, 8/18, 8/18.
+
+Effet de la police (mêmes deux textes, regex exacte) :
+
+| Police | Moteur | Total des occurrences |   conservé |
+|---|---|---|---|
+| SF | v6tiny | 22/88 | 11/16 (6/8 et 5/8) |
+| SF | v6small | 28/88 | 8/8 et 8/8 |
+| Verdana | v6tiny | 49/88 | 16/16 |
+| Verdana | v6small | 69/88 | 16/16 |
+| Verdana | tesseractjs | 48/88 | 16/16 |
+| Verdana | vision-nocorr | 36/88 | 14/16 |
+| Georgia | v6tiny | 45/88 | 16/16 |
+| Georgia | v6small | 50/88 | 16/16 |
+| Georgia | tesseractjs | 42/88 | 15/16 |
+| Georgia | vision-nocorr | 30/88 | 15/16 |
+
+Règle par règle :
+
+| Règle | Survit ? | Ce que l'OCR écrit à la place |
+|---|---|---|
+|   | Oui si la police distingue   de   (Verdana, Georgia : 8/8 pour l'occurrence anglaise avec tiny et small). Non en SF |  ,  ,  ,  . Propriété de la police, commune aux quatre moteurs, pas de PP-OCR. Autres ratés : apostrophe ou virgule perdue,  ,  ,  ,   |
+|   | Non. tiny : 0/48 sur les trois polices ; small : 2/16, 10/16, 0/16 |   (SF, Verdana),   (Georgia, chiffres elzéviriens). Réserve : toutes les occurrences sont le même jeton avec un   ; d'autres chiffres n'ont pas été testés |
+|  , forme à deux-points | Casse avec tiny ; tient en grande partie avec small en SF (12/16) et Verdana (16/16), pas en Georgia (6/16) |  ,  ,  ,   |
+|  , forme   | Environ une fois sur deux avec PP-OCR (son dictionnaire contient  ) ; 0 avec Tesseract et Vision |  ,   |
+|   | En grande partie perdue |  ,  , jeton collé au mot suivant, ou URL coupée par le retour à la ligne |
+
+Causes des ratés de v6tiny en SF (66 ratés) : substitution ou perte de caractère 52, coupure dans le jeton 8, espace perdu ou ajouté 6. Pour v6small (60 ratés) : 42, 8, 10.
+
+Motifs tolérants exploratoires (hors dépôt) : les chiffres acceptent  , un espace optionnel entre jetons, confusion de crochets et de point admise,   pour « AI ».
+
+| Police | v6tiny | v6small | tesseractjs | vision-nocorr |
+|---|---|---|---|---|
+| SF | 83/88 | 88/88 | 69/88 | 83/88 |
+| Verdana | 88/88 | 88/88 | 82/88 | 68/88 |
+| Georgia | 86/88 | 88/88 | 75/88 | 70/88 |
+
+Faux positifs de ces motifs : 0 sur la sortie OCR des 7 textes ordinaires (tous moteurs) et 0 sur les 118 fichiers source de  .
+
+Réserves sur ces motifs :
+
+Ils ont été ajustés sur les ratés mêmes sur lesquels ils sont notés. C'est une borne haute, pas une mesure.
+Le contrôle de faux positifs est petit et porte sur du texte propre.
+Un premier jet du motif anglais reconnaissait « as an All-Star ». Le risque de faux positif est réel.
+Les comptes de règles sont 8 rendus d'une ou deux chaînes, pas des échantillons indépendants.
+Les vrais jetons   sont entourés de caractères à usage privé. Ils n'ont pas été rendus ici ; leur aspect dans une image réelle est inconnu.
+
+4.4 Temps et mémoire
+
+Indicatif, machine chargée. Meilleur de 2 passages par image, 72 images. Les chronos de PP-OCR et de Vision excluent le décodage du PNG ; celui de tesseract.js l'inclut.
+
+| Moteur | Médiane, s/image | Min | Max | Pic mémoire sur les 73 images |
+|---|---|---|---|---|
+| v6tiny | 0,25 | 0,08 | 0,63 | 1 344 Mo |
+| v6small | 0,91 | 0,41 | 2,09 | 1 914 Mo |
+| vision-nocorr | 0,06 | 0,03 | 0,45 | 279 Mo |
+| tesseractjs | 1,41 | 0,39 | 4,63 | 242 Mo |
+
+Pic mémoire pour une seule image, un processus par image : 524 à 831 Mo pour tiny, 916 à 1 274 Mo pour small (Python et ses imports seuls : 83 Mo). C'est élevé pour un modèle de 6 Mo. La mesure passe par rapidocr et ONNX Runtime à pleine résolution ; ce n'est pas un plancher, et aucun réglage n'a été essayé.
+L'image la plus rapide de tiny a pris 0,08 s : c'était une bande de 840×111 px. Cela ne confirme pas les « 97 ms » du fil.
+
+5. Ce que ça changerait pour isitai
+
+5.1 Ce que l'OCR ouvre
+
+| Cas | Aujourd'hui | Avec OCR |
+|---|---|---|
+| Capture d'écran d'une conversation, texte collé dans une image | le texte n'est jamais lu ;   | le texte est lu, les règles de texte s'appliquent, avec les pertes du 4.3 |
+| PDF sans couche texte (scan), photo d'un document | idem | idem, à condition d'obtenir les pages en image. Non testé ici : ni PDF image, ni page scannée, ni photo |
+| Futur classifieur de texte (incrément 5 de la feuille de route) | ne voit pas le texte des images | pourrait le voir. Effet des erreurs d'OCR sur un classifieur : non mesuré |
+
+5.2 Ce que l'OCR ne règle pas
+
+Capture d'une image IA sans texte. Rien à lire : le résultat reste  . Vérifié sur la seule image réelle du test [M]. La section 6 de la feuille de route reste entière.
+Les règles exactes. Elles perdent la plupart de leurs occurrences après OCR (22/88 avec tiny en SF [M]). Sans variantes tolérantes, brancher un OCR rapporte peu. Avec, le risque de faux positif augmente et doit être mesuré.
+  : définitivement hors de portée sur une image.
+Les écritures non couvertes. Avec tiny, un texte russe ou des kana donnent du charabia sans erreur [M]. Il faudrait au moins prévenir l'appelant ; détecter le cas de façon fiable n'a pas été étudié.
+Emoji et symboles. Tiny ne peut pas émettre d'emoji [P, Dict]. Le score publié de Baidu sur les « caractères spéciaux » n'est que de 57,1 à 61,7 [P] : la ponctuation dont dépendent les règles est justement le point faible.
+Mise en page. Bulles côte à côte, plusieurs colonnes : non testé. La chaîne simple trie les boîtes de haut en bas et de gauche à droite [P, ancienne chaîne ; chaîne 3.x non vérifiée].
+
+5.3 Une preuve plus faible, à signaler comme telle
+
+Un texte lu par OCR n'est pas le texte d'origine. Trois conséquences pour le rapport [J] :
+
+1. Couche distincte. Une preuve issue d'un texte OCR porte une couche propre (par exemple  ), pas  .
+2. Avertissement systématique : « texte lu par OCR : caractères possiblement erronés ».
+3. Le motif tolérant est nommé. Si la correspondance vient d'une variante tolérante, la preuve le dit et cite la chaîne lue. Sa force ne dépasse jamais celle de la règle exacte.
+
+Le critère 1 de la spec (zéro faux   fort sur le corpus humain) continue de s'appliquer. Les variantes tolérantes ne doivent s'activer que lorsque l'appelant déclare un texte venu d'un OCR ; sur un texte normal, les règles ne changent pas.
+
+6. Options d'intégration
+
+Rappel des règles déjà posées par la feuille de route : cœur déterministe, hors ligne, sous 10 Mo ; tout ce qui a besoin d'un modèle vit dans un paquet optionnel ; les modèles ne sont jamais téléchargés par la lib ( ) ; une couche sans son modèle est sautée avec un   ; un spike de moteur d'inférence vient d'abord (incrément 4).
+
+6.1 Les briques et leur poids
+
+| Brique | Taille | Maturité | Marquage |
+|---|---|---|---|
+| Modèles tiny (det + rec) | 6,24 Mo ; 5,70 Mo gzippé | publiés le 2026-06-11, Apache-2.0 | [M] |
+| Modèles small | 31,0 Mo | idem | [M] |
+|   0.28 (Rust pur) | +1,19 Mo (opt-z) à +3,07 Mo (opt-3) en natif ; 0,54 à 0,83 Mo gzippé en WASM, sans import JavaScript ; 21 crates | 0.x, 35 versions depuis fin 2023, un auteur principal | [M] taille ; [P] maturité |
+|   0.23 (Rust pur) | +5,17 Mo (opt-z) à +15,85 Mo (opt-3) en natif ; 2,1 Mo gzippé en WASM ; 95 crates | stable, 175 versions depuis 2018 | [M] taille ; [P] maturité |
+| ONNX Runtime 1.31.1 natif | bibliothèque de 25 à 48 Mo selon la plateforme (paquet Node) ; wheel Python de 14,7 à 23,8 Mo ; pas de build macOS x86_64 dans cette version | mûr ; crate   toujours sans version stable (2.0.0-rc.15) | [P] |
+|   1.31.1 | 3,8 Mo gzippé (CPU) ; 6,9 Mo gzippé avec WebGPU | mûr | [P] |
+| Décodeur d'image ( , PNG + JPEG) | +0,23 à +0,33 Mo en natif ; 0,13 Mo gzippé en WASM | mûr | [M] |
+| Colle OCR en Rust (3.4) | non mesuré | à écrire ; une crate jeune existe sur tract ( , 6 versions) | — |
+| tesseract.js 7.0.0 | cœur WASM 1,06 Mo gzippé ; données par langue 0,7 à 3,0 Mo gzippé (fra 0,71 ; eng 2,95) | mûr, depuis 2015 | [P] |
+
+Précisions :
+
+Les tailles de  ,   et   sont des écarts mesurés sur un binaire vide, hors colle OCR. Ce n'est pas le coût marginal dans le cœur d'isitai.
+et   ont exécuté les 6 modèles avec une sortie égale à celle d'ONNX Runtime à 6 décimales, sur une entrée synthétique (  diffère à la 5e décimale du maximum sur deux modèles  ) [M]. Cela prouve la couverture des opérateurs, pas la qualité de l'OCR : aucune chaîne OCR complète n'a tourné sur rten ou tract.
+Temps d'inférence indicatifs : les moteurs Rust purs sont à environ 1 à 3 fois ONNX Runtime ; les plages se recouvrent, aucun classement n'est sûr [M, machine chargée].
+Le   du dépôt ne contient aujourd'hui aucun décodeur d'image : ce coût est nouveau. Il serait partagé avec l'incrément 3 de la feuille de route ( ).
+Le chemin officiel navigateur (SDK de Baidu) télécharge les modèles et le moteur au moment de l'exécution, et pèserait environ 13 à 14 Mo au premier chargement pour tiny (estimation par somme de parties mesurées ; le SDK n'a pas été exécuté). La démo d'isitai pèse 2,4 Mo gzippé.
+
+6.2 Les trois options
+
+| | (a) Pas d'OCR dans la lib | (b) Paquet optionnel   | (c) OCR dans le cœur |
+|---|---|---|---|
+| Principe | L'appelant fait l'OCR avec l'outil de son choix et passe le texte à  . La lib fournit une recette et sait traiter un texte déclaré « OCR » | Paquet séparé : moteur, colle, modèles tiny. Le cœur ne change pas de taille | Moteur, colle et décodeur dans le cœur ; modèles embarqués ou fournis |
+| Taille ajoutée au cœur | 0 | 0 | moteur (+1,19 à +3,07 Mo avec  ) + décodeur (+0,23 à +0,33 Mo) + colle (non mesurée), plus 6,24 Mo si les modèles sont embarqués. Le cœur fait environ 6 Mo aujourd'hui |
+| Taille du paquet optionnel | sans objet | mêmes briques, dans le paquet optionnel ; total non mesuré | sans objet |
+| Plateformes | toutes. La démo navigateur ne change pas : elle ne lit toujours pas le texte des images | natif partout où Rust compile si le moteur est   ou  . Navigateur possible avec   (WASM exécuté dans Node [M] ; navigateur réel non testé) | idem (b), mais la démo WASM grossit pour tout le monde |
+| Dépendances nouvelles | aucune | un moteur d'inférence 0.x ou  , un décodeur d'image | les mêmes, imposées à tous |
+| Maintenance | une recette et un jeu de variantes de règles | la colle OCR (3.4) à écrire et à tenir ; suivi des modèles ; trois jeux de seuils possibles | la même, dans le chemin critique |
+| Risques | l'appelant choisit un OCR médiocre ; qualité hors de notre contrôle. Faux positifs des variantes tolérantes |   repose sur un auteur principal ; mémoire non maîtrisée (524 à 1 344 Mo observés via une autre pile [M]) ; charabia silencieux hors écriture latine ; aucune évaluation indépendante de tiny | casse « petit cœur » et « pas de dépendance sans besoin » ; un utilisateur qui ne vérifie que des métadonnées paie l'OCR |
+| Conforme à la feuille de route | oui | oui, après le spike de moteur | non |
+
+6.3 Recommandation
+
+1. Maintenant : option (a), avec le travail utile dans les règles. Sans variantes tolérantes, (a) seule rapporte peu, puisque les règles exactes ne survivent pas. Le pas à faire, sans dépendance, est donc dans   : un mode « texte venu d'un OCR », des variantes tolérantes validées sur du matériel neuf, une preuve marquée comme en 5.3. Ce travail sert quel que soit l'OCR choisi ensuite, y compris l'OCR du système de l'appelant.
+2. Ensuite, seulement si le besoin est confirmé : option (b). Elle se branche sur l'incrément 4 de la feuille de route, pas à côté : le spike de moteur y compare déjà   et   ; il faut y ajouter  , seul moteur mesuré ici sous le méga-octet gzippé en WASM. La décision se prend sur une chaîne OCR complète en Rust, pas sur les mesures d'opérateurs de ce document.
+3. Option (c) : refusée. Elle contredit les règles du propriétaire et la ligne 1 de la feuille de route.
+
+La feuille de route nomme déjà un paquet optionnel  . Faut-il un paquet   distinct ou une couche de plus dans   ? Non tranché ; à décider au même spike.
+
+Sur le choix du modèle, rien n'est tranché [J] : tiny suffit peut-être pour l'écriture latine si les variantes tolérantes tiennent (verdict conservé 16/16 en Verdana et Georgia, 11/16 en SF [M]) ; small est meilleur mais pèse 31 Mo. Le modèle latin v5 mobile, que Baidu donne meilleur que tiny v6 en écriture latine [P], n'a pas été essayé.
+
+7. Prochaine étape proposée
+
+7.1 Un incrément
+
+«   accepte un texte venu d'un OCR. » Aucune dépendance, aucun modèle, taille du cœur inchangée.
+
+Périmètre :
+
+Une option d'entrée déclarant l'origine OCR du texte (nom à choisir).
+Dans ce mode seulement : variantes tolérantes des règles  ,  ,  ,   ;   désactivée.
+Preuves dans une couche distincte, avec l'avertissement « texte lu par OCR » et la chaîne lue.
+Une recette documentée : « faites l'OCR, passez le texte » (Vision sur macOS, tesseract, PP-OCR via ONNX Runtime).
+
+Test d'acceptation. Les seuils sont des propositions [J], pas des données :
+
+| # | Critère | Matériel |
+|---|---|---|
+| 1 | Sans l'option, tous les verdicts du corpus actuel sont inchangés | corpus existant |
+| 2 | Avec l'option, 0 correspondance tolérante sur les textes humains de   et sur leur sortie OCR | à produire : rendus et OCR des textes humains |
+| 3 | Rappel mesuré sur du matériel neuf**, non utilisé pour écrire les motifs : autres polices que SF, Verdana et Georgia ; jetons   et   avec d'autres chiffres que   ; au moins deux moteurs d'OCR | à produire |
+| 4 | Au moins quelques vraies captures contenant ces artefacts (clair, sombre, bureau, téléphone) donnent   avec l'avertissement OCR | à collecter :   ne contient qu'une capture, sans texte. Ces artefacts naissent au copier-coller ; le matériel réaliste est donc une capture d'un texte collé (document, courriel, forum) plutôt que de l'interface de conversation elle-même [J, à vérifier] |
+| 5 | Le rappel et le taux de faux positifs obtenus sont écrits dans le README, à côté de la recette | — |
+
+Si le critère 2 échoue pour une règle, sa variante tolérante n'est pas livrée.
+
+7.2 À mesurer avant de décider plus
+
+| Question | Pourquoi |
+|---|---|
+| Taille et vitesse d'une chaîne OCR complète en Rust sur   (colle comprise), en natif et dans un vrai navigateur | Les mesures actuelles portent sur des opérateurs, avec une entrée synthétique, dans Node |
+| Mémoire de pointe avec un moteur Rust et des réglages (découpage en tuiles, limite de côté) | 524 à 1 344 Mo observés via rapidocr et ONNX Runtime ; inacceptable sur du vieux matériel si cela se confirme |
+| Qualité sur de vraies captures : bulles, colonnes, blocs de code, emoji, petites polices | Rien de cela n'a été testé |
+| PDF sans couche texte et photos de documents | Cas annoncé comme cible, non essayé |
+| tiny v6 contre le modèle latin v5 mobile, et contre small | Le choix du modèle n'est pas fait |
+| Ticket #18364 (mojibake) sur   et sur   | Non reproduit en Python ; non vérifié ailleurs |
+| Détection d'une écriture non couverte | Éviter le charabia silencieux |
+| Besoin réel des utilisateurs | L'option (b) ne se justifie que si la recette de l'option (a) ne suffit pas |
+
+8. Affirmations non vérifiées ou reposant sur une seule source
+
+| Affirmation | État |
+|---|---|
+| Tous les scores de précision de PP-OCRv6 (86,2 ; 83,2 ; 80,6 ; 73,5 ; 93,2 ; tableaux latin et anglais) | Article de Baidu seulement, bancs internes non publiés, non reproduits |
+| « 97 ms » | Vu sur un agrégateur seulement ; origine inconnue |
+| Vitesses publiées (tableau 9) | Article seulement ; fils et réglages non vérifiés |
+| Écart de paramètres de   (21,99 M contre 15,5 M) | Constaté, non expliqué |
+| Nombre exact d'entrées des dictionnaires | Deux relevés divergent d'une unité |
+| Prise en charge de la v6 par le SDK officiel | Le paquet npm inspecté la prévoit ; la page de documentation ne montre que la v5 ; SDK non exécuté |
+| Tickets #18364, #18320, #18395 | Un rapport d'utilisateur chacun |
+| Vitesses annoncées par les README de   et de   | Citées, non reproduites ; non reprises comme données ici |
+| Résultats de Kiessling (architecture réentraînée) | Une seule étude ; ne porte pas sur les poids de Baidu |
+| Version de PaddleOCR dans OmniDocBench | Non précisée par l'article |
+| Perte de lignes par Vision sur le profil bureau | Mesurée, cause non établie |
+| Motifs tolérants (83/88 à 88/88) | Ajustés sur leurs propres ratés ; borne haute |
+| Tailles et licences des modèles optionnels d'orientation et de redressement | Non relevées |
+| OCR du système (Apple Vision, Windows.Media.Ocr) comme recette : langues, version minimale, fonctionnement hors ligne | Non vérifié ; Vision n'a été essayé que sur macOS 27.2 |
+| Contenu de paddleocr.com | Non lu |
+
+Fichiers de l'essai, hors dépôt :   (scripts  ,  ,  ,   ; résultats dans  ,  ,   ; recherche dans   et  ).

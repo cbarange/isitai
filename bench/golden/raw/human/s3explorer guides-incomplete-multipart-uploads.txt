@@ -1,0 +1,50 @@
+In short: when a multipart upload is interrupted and never completed or aborted, its parts stay in the bucket. They are invisible in normal listings, but AWS bills them as storage until the upload is aborted. List them with  , abort them with  , and add a lifecycle rule so they are cleaned up automatically.
+
+Why they cost money
+
+Large files are uploaded in parts. The AWS documentation is explicit: after you initiate a multipart upload, S3 retains all parts until you complete or stop it, and "throughout its lifetime, you are billed for all storage, bandwidth, and requests for this multipart upload and its associated parts". Aborting deletes the parts, with no early-delete charge.
+
+Interrupted uploads are common: closed laptops, killed scripts, failed CI jobs, network drops on multi-gigabyte files.
+
+Find them
+
+With the AWS CLI:
+
+ 
+
+Each entry shows the key, the   and when it was initiated. For an S3-compatible provider, add  .
+
+With S3 Explorer, a bucket that holds incomplete uploads older than a threshold shows a yellow warning icon on its card. The threshold is 24 hours by default and can be set from 1 to 720 hours in Settings → Performance. The icon opens a dialog that lists each upload with its key, age and size, filters them by age, and aborts them.
+
+ 
+
+The warning icon on a bucket card, with the number of incomplete uploads older than the threshold.
+
+ 
+
+The dialog: 165 MB of parts across 5 uploads, filters by age, and a reminder to check for uploads still in progress before aborting.
+
+Delete them
+
+ 
+
+Only abort uploads that are not in progress: aborting an active upload makes it fail.
+
+Prevent them: a lifecycle rule
+
+AWS recommends a lifecycle rule with the   action:
+
+ 
+
+Uploads completed within the period are not affected, and the rule applies only to incomplete uploads, never to objects.
+
+On S3-compatible providers
+
+Cloudflare R2 aborts incomplete multipart uploads automatically after 7 days by default; a lifecycle policy can change the delay.
+Other providers** differ in lifecycle support. Check their S3 compatibility page, and fall back to listing and aborting manually.
+
+Sources
+
+AWS: uploading objects using multipart upload (billing of parts)
+AWS: lifecycle rule to abort incomplete multipart uploads
+Cloudflare R2: multipart objects (7-day automatic abort)

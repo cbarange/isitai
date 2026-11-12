@@ -119,3 +119,146 @@ jobs:
         run: |
           python3 -I bench/crosslang/diff.py target/release/isitai bindings/node .venv/bin/python \
             "$RUNNER_TEMP/c2pa/fixtures/test_cert_root_bundle.pem" "$RUNNER_TEMP/c2pa/fixtures" "$RUNNER_TEMP/signed"
+
+  hygiene:
+    name: Hygiène (workflows, licences, secrets)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # l'analyse de secrets a besoin de l'historique complet
+      - name: Lint des workflows
+        uses: reviewdog/action-actionlint@v1
+        with:
+          fail_on_error: true
+      - name: Licences, doublons et sources des dépendances
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
+      - name: Aucun secret dans l'arbre ni dans l'historique
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: "true"
+
+  package-size:
+    name: Taille des paquets
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      # Budgets provisoires, à recalibrer sur la première mesure réelle : ils sont là pour
+      # attraper une régression d'un facteur 2, pas pour arbitrer quelques kilo-octets.
+      CRATE_MAX_KB: "700"
+      NPM_MAX_KB: "500"
+      SDIST_MAX_KB: "900"
+      WHEEL_MAX_KB: "4096"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Construire les paquets minimaux
+        run: |
+          set -euo pipefail
+          cargo package -p isitai --no-verify --allow-dirty
+          (cd bindings/node && npm pack --dry-run --json --ignore-scripts > pack.json)
+          python -m pip install --quiet maturin==1.16.0
+          (cd bindings/python && maturin sdist --out dist)
+          maturin build --release --out "$RUNNER_TEMP/dist" --manifest-path bindings/python/Cargo.toml
+      - name: Comparer aux budgets
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+
+          def kb(p):
+              return pathlib.Path(p).stat().st_size // 1024
+
+          rows, over = [], []
+          crate = next(pathlib.Path("target/package").glob("isitai-*.crate"))
+          rows.append(("crate", kb(crate), int(os.environ["CRATE_MAX_KB"])))
+          pack = json.loads(pathlib.Path("bindings/node/pack.json").read_text())
+          rows.append(("npm (méta)", pack[0]["size"] // 1024, int(os.environ["NPM_MAX_KB"])))
+          sdist = next(pathlib.Path("bindings/python/dist").glob("isitai-*.tar.gz"))
+          rows.append(("sdist", kb(sdist), int(os.environ["SDIST_MAX_KB"])))
+          wheel = next(pathlib.Path(os.environ["RUNNER_TEMP"], "dist").glob("isitai-*.whl"))
+          rows.append(("wheel", kb(wheel), int(os.environ["WHEEL_MAX_KB"])))
+
+          lines = ["| paquet | mesuré | budget |", "|---|---|---|"]
+          for name, size, budget in rows:
+              mark = "⚠️" if size > budget else "✅"
+              lines.append(f"| {name} {mark} | {size} Ko | {budget} Ko |")
+              if size > budget:
+                  over.append(f"{name} : {size} Ko > {budget} Ko")
+          summary = "\n".join(lines)
+          print(summary)
+          pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")).write_text(summary + "\n")
+          if over:
+              sys.exit("budget de taille dépassé —\n  " + "\n  ".join(over))
+          PY
+
+  bindings-node-versions:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - working-directory: bindings/node
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          npm test
+
+  bindings-python-versions:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - working-directory: bindings/python
+        run: |
+          python -m pip install --quiet maturin==1.16.0
+          maturin build --release --out dist
+          python -m pip install --quiet --pre --no-index --find-links dist isitai
+          python -m unittest discover -s tests -v

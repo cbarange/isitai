@@ -1,0 +1,184 @@
+Every "S3 pricing comparison" ranks providers by the storage line: $0.023 here, $0.00695 there. That number is almost meaningless.
+
+On a real invoice, storage is often a minority. Egress, request volume, retrieval fees, replication and minimum-storage durations decide the bill — and they scale differently for every workload. A provider that is 3× cheaper per stored gigabyte can be 5× more expensive the moment you actually serve the data.
+
+So we modelled it. Eight providers, four workloads, one formula, every component included.
+
+What we modelled (and what we did not)
+
+Monthly cost = storage + egress + requests + base fee, for a steady-state month.
+
+Storage: GB-month, binary gigabytes (1 TB = 1,024 GB), as every provider bills it.
+Egress: internet data transfer out, after each provider's free allowance and fair-use rules.
+Requests: PUT/LIST and GET class pricing, at the volume each scenario implies.
+Not modelled: cross-region replication transfer (treated separately in scenario 4), retrieval fees for cold tiers, Transfer Acceleration, and support plans.
+
+Prices are list prices captured on 30 October 2026 from each vendor's pricing page, in USD. They change constantly — treat the shape of the curves as the durable insight, not the exact dollars.
+
+<figure>
+  <img src="/charts/cost-backup-and-archive.svg" alt="Monthly cost for 10 TB stored with 5% monthly egress across 8 S3 providers">
+  <figcaption>Backup &amp; archive: 10 TB stored, 512 GB served per month.</figcaption>
+</figure>
+
+The five components nobody quotes
+
+1. Storage per GB-month. The headline, and the least interesting.
+2. Egress per GB. Ranges from $0 to $0.12 — a 12× spread on the same gigabyte.
+3. Requests. Negligible below ~50M/month, decisive above ~500M/month.
+4. Minimum durations. Wasabi bills 90 days whether you keep the object 90 days or 90 minutes. GCS Nearline is 30 days, Coldline 90, Archive 365.
+5. Minimum billable size. S3 Standard-IA bills 128 KB minimum per object — a million 4 KB objects cost you 32× their real size.
+
+Items 4 and 5 are where "cheap" providers quietly become expensive.
+
+The list prices
+
+| Provider | Storage $/GB-mo | Egress $/GB | Free egress | Requests (PUT / GET per 1M) |
+|---|---|---|---|---|
+| AWS S3 (us-east-1) | 0.023 | 0.09 | 100 GB | $5.00 / $0.40 |
+| Google Cloud Storage | 0.020 | 0.12 | 100 GB | $5.00 / $0.40 |
+| Cloudflare R2 | 0.015 | 0 | unlimited | $4.50 / $0.36 |
+| Backblaze B2 | 0.00695 | 0.01 | up to 3× stored | free |
+| Wasabi | 0.00799 | 0 (fair use) | policy-bound | free |
+| DigitalOcean Spaces | 0.02 (after 250 GiB) | 0.01 | 1 TiB | free |
+| OVHcloud (Standard 3-AZ) | 0.0157 | 0 | unlimited | free |
+| MinIO (self-hosted) | ~fixed infra | 0 | n/a | free |
+
+Two entries deserve immediate suspicion. R2's $0.015 is more than double Backblaze's $0.00695. And Wasabi is cheaper per GB than R2 while also having no egress fees — on paper, R2 loses to Wasabi on every axis. Keep that in mind for the rest of the article.
+
+Scenario 1 — Backup & archive
+
+10 TB stored, 5% served per month (512 GB), 1M PUT, 2M GET.
+
+| Provider | Monthly |
+|---|---|
+| MinIO (self-hosted) | $55 |
+| Backblaze B2 | $71 |
+| Wasabi | $82 |
+| Cloudflare R2 | $159 |
+| OVHcloud | $161 |
+| DigitalOcean Spaces | $205 |
+| Google Cloud Storage | $260 |
+| AWS S3 | $278 |
+
+For cold-ish data, storage price dominates and Backblaze wins the managed providers at $6.95/TB. AWS costs 3.9× more than B2 for the same 10 TB.
+
+Note that R2 lands mid-table. Its free egress buys nothing when you barely egress.
+
+Scenario 2 — Application data
+
+10 TB stored, 30% served (3 TB), 20M PUT, 200M GET — a typical SaaS tenant dataset.
+
+| Provider | Monthly |
+|---|---|
+| MinIO (self-hosted) | $55 |
+| Backblaze B2 | $71 |
+| Wasabi | $82 |
+| OVHcloud | $161 |
+| DigitalOcean Spaces | $225 |
+| Cloudflare R2 | $316 |
+| AWS S3 | $683 |
+| Google Cloud Storage | $741 |
+
+R2 climbs because 200M GET requests cost $72 and its storage premium bites. AWS and GCS are now 8–10× B2. At this egress ratio, B2's "3× free" rule is still not binding (3 TB < 3 × 10 TB).
+
+<figure>
+  <img src="/charts/cost-application-data.svg" alt="Monthly cost for 10 TB stored with 30% monthly egress across 8 S3 providers">
+  <figcaption>Application data: 10 TB stored, 3 TB served, 200M GETs.</figcaption>
+</figure>
+
+Scenario 3 — Media distribution: the egress cliff
+
+5 TB stored, but 20 TB served per month — a 400% egress ratio, normal for video, images or public datasets.
+
+| Provider | Monthly |
+|---|---|
+| Wasabi | $41\ |
+| MinIO (self-hosted) | $55 |
+| OVHcloud | $80 |
+| Backblaze B2 | $87 |
+| Cloudflare R2 | $194 |
+| DigitalOcean Spaces | $297 |
+| AWS S3 | $2,082 |
+| Google Cloud Storage | $2,678 |
+
+<figure>
+  <img src="/charts/cost-media-distribution.svg" alt="Monthly cost for 5 TB stored with 400% monthly egress across 8 S3 providers">
+  <figcaption>Media distribution: 5 TB stored, 20 TB served per month.</figcaption>
+</figure>
+
+\ And this is where the asterisk matters. Wasabi's "no egress fees" is a fair-use policy: free egress is expected to stay around or below your stored volume. Serving 4× your stored data every month is outside that policy — Wasabi can throttle or bill the excess. The $41 is the price if they let you, which for a real media workload they probably won't.
+
+The honest winner for high-egress workloads is Cloudflare R2 or OVHcloud, both with genuinely unlimited free egress. R2 costs 10× less than AWS here; OVH costs 26× less.
+
+<figure>
+  <img src="/charts/egress-cliff.svg" alt="Line chart of monthly cost versus monthly egress volume at 10 TB stored, showing AWS and GCS crossing $2,000 while R2 and OVH stay flat">
+  <figcaption>Same 10 TB stored, egress from 0 to 20 TB/month. The managed giants are linear in egress; R2 and OVH are flat.</figcaption>
+</figure>
+
+This is the chart to keep. At 20 TB egress per month, AWS costs $2,082 and GCS $2,678, against $194 for R2 and $161 for OVHcloud. Storage is identical in all four cases.
+
+Scenario 4 — Cross-region DR
+
+10 TB primary + 10 TB replica, 5% served.
+
+| Provider | Monthly |
+|---|---|
+| MinIO (self-hosted) | $55 |
+| Backblaze B2 | $142 |
+| Wasabi | $164 |
+| Cloudflare R2 | $314 |
+| OVHcloud | $322 |
+| DigitalOcean Spaces | $410 |
+| Google Cloud Storage | $527 |
+| AWS S3 | $561 |
+
+<figure>
+  <img src="/charts/cost-cross-region-dr.svg" alt="Monthly cost for 10 TB primary plus 10 TB replica across 8 S3 providers">
+  <figcaption>Cross-region DR: 20 TB total stored, 5% served.</figcaption>
+</figure>
+
+Replication doubles storage and adds inter-region transfer. On AWS, replicating 10 TB across regions costs $0.02/GB in transfer alone — $205 for a one-off, plus double storage forever. B2 and Wasabi stay cheapest because their storage rate is simply lower.
+
+The three traps that break the model
+
+1. Fair-use egress. "Free egress" is not always free. Wasabi ties it to your stored volume; Backblaze caps it at 3× stored; DigitalOcean gives 1 TiB then bills. Only R2 and OVHcloud are unconditional.
+
+2. Minimum storage duration. Wasabi's 90-day minimum means deleting a 10 TB dataset after a week still bills three months — $240 instead of $18. GCS Nearline (30 days) and Archive (365 days) have the same trap. For ephemeral data (CI artifacts, temporary exports), a "cheap" tier can cost more than S3 Standard.
+
+3. Retrieval and request fees at scale. GCS and S3 charge per GB retrieved from cold tiers. At 500M GETs/month, AWS's $0.0004/1,000 becomes $200 — more than the storage of most small buckets.
+
+What the numbers actually say
+
+Backblaze B2 is the cheapest managed provider for low-to-moderate egress. $6.95/TB and a 3× egress allowance cover most application workloads.
+Wasabi is the cheapest per GB with free egress, but the 90-day minimum and fair-use policy make it a fit for stable, long-lived data only.
+Cloudflare R2 is not the cheapest — it is the safest bet when egress is unpredictable. No minimum duration, no fair-use clause, no egress fee, and it beats AWS on storage by 35%.
+OVHcloud is the dark horse: $0.0157/GB, zero egress, zero API fees, EU sovereign. At high egress it is the cheapest thing on the list.
+AWS and GCS win on ecosystem, tiering depth, regions and compliance — never on this bill.
+MinIO wins below ~30 TB if you already run hardware and value the operational control. Above that, the ops burden grows faster than the savings.
+
+The rule of thumb: compute your egress-to-storage ratio first. Below 30%, buy the cheapest storage. Above 100%, buy the cheapest egress. Everything else is marketing.
+
+Where this model meets your actual bill
+
+Everything above assumes a workload profile. Your real numbers live in your bucket — and the request side is the one nobody looks at, even though it is easy to measure.
+
+S3 Explorer is the desktop client we build. It connects to 25 S3-compatible providers with a read-only key and keeps a local request-metrics dashboard: requests per category, error rate, an hourly distribution, and a cost estimate with a monthly projection, priced from the provider's own request rates.
+
+<figure>
+  <img src="/screenshots/s3-request-metrics.webp" alt="S3 Explorer request metrics dashboard: 250 requests, $0.0011 cost, $0.03 monthly projection, requests by category with LIST at 87.6%, index efficiency gauge showing 135 requests saved, and an hourly distribution chart" width="1500" height="690" loading="lazy">
+  <figcaption>The request-metrics dashboard: cost estimate, monthly projection, request mix, and the index efficiency that counts the LIST calls the local index avoided.</figcaption>
+</figure>
+
+That is a real session against a MinIO endpoint: 250 requests, of which 87.6% were LIST — the exact request type this article prices at $5 per million on AWS. The local index answered 135 of those listings without touching the bucket, and the dashboard turns that into money ($0.0007 on 250 requests — multiply by your real volume before dismissing it).
+
+Requests are one half of the bill. For the egress half, read your provider's usage report, then come back to the scenario that matches your ratio.
+
+Run the numbers on your own buckets. Connect a read-only key and the dashboard shows what your workload actually costs per month — a Rust + Tauri app for Windows, macOS and Linux, free to start.
+
+<p style="margin:1.75rem 0 0"><a href="https://s3explorer.accessdevops.com/" style="display:inline-block;background:#0f766e;color:#ffffff;font-weight:600;font-size:0.95rem;padding:0.8rem 1.5rem;border-radius:0.5rem;text-decoration:none">Download S3 Explorer&nbsp;→</a></p>
+
+Sources
+
+List prices captured 30 October 2026: AWS S3, Google Cloud Storage, Cloudflare R2, Backblaze B2, Wasabi, DigitalOcean Spaces, OVHcloud Object Storage.
+
+The model, its assumptions and the raw output are reproducible — the numbers above come from a script, not a spreadsheet.

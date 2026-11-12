@@ -1,0 +1,30 @@
+Reprise de session — état au 2026-11-12, 13 h 50
+
+Note pour reprendre le travail dans une nouvelle session (autre compte, ou après une coupure).
+
+État du dépôt
+
+Tout le code livré est sur   et la CI est verte au commit   (dernier commit :  , documentation seule).
+Démo : dépôt  , déployée par Netlify à chaque push. Dernier build : isitai  .
+Non commité :   (voir « Corpus » plus bas).
+
+Banc d'essai des détecteurs de texte : terminé, non relu
+
+Rapport :  . Tableaux :  . Reste à faire : une relecture indépendante (recalcul des chiffres, fuites entre entraînement et test), puis les trois incréments proposés en section 6 du rapport. Les données et modèles sont dans  , effacé au redémarrage.
+
+Corpus
+
+  contient 7 fichiers de l'auteur et 117 textes Wikipédia d'avant 2019 (  pour la provenance,   pour le refaire). Il n'est pas commité : une image porte un copyright de banque d'images. Décision de l'auteur attendue.
+
+Décisions en attente de l'auteur
+
+Commiter le corpus sans les images aux droits incertains ?
+Ajouter à   un mode « texte venu d'un OCR » avec des motifs tolérants (voir  ) ?
+Ouvrir un ticket chez c2pa-rs pour le MP4 lent (voir  , constat 1) ?
+Premier algorithme à modèle : attendre le rapport du banc.
+
+Règles de travail
+
+Ne jamais lire ni utiliser  . Les publications npm, PyPI et crates.io se font par l'auteur ou par le workflow de release ( ).
+Principes de l'auteur : KISS, pas de sur-ingénierie, diff minimal, mesurer avant d'optimiser.
+Documents de référence :  ,  ,  ,  ,  .

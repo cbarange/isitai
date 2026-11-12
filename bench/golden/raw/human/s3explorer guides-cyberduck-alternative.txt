@@ -1,0 +1,43 @@
+In short: Cyberduck is a free, open-source file transfer client for macOS and Windows that handles S3 alongside FTP, SFTP, WebDAV and cloud drives. S3 Explorer is dedicated to S3: it adds Linux, presets for 25 S3-compatible providers and a local index for very large buckets, but does not do other protocols.
+
+At a glance
+
+| | Cyberduck 9.5.4 | S3 Explorer 0.3.9 |
+|---|---|---|
+| Platforms (GUI) | macOS, Windows | Windows, macOS, Linux |
+| Linux | Command-line client ( ) only | Native app (AppImage, .deb, .rpm) |
+| Protocols | S3, FTP, SFTP, WebDAV, SMB, Azure, Google Drive, Dropbox, OneDrive and more | S3 and S3-compatible only |
+| License | Free software (GPL), donation prompt removed with a key from a 10 USD donation | Free with all features, 5 profiles; 11.50 € lifetime licence removes the limit |
+| S3-compatible providers | Connection profiles installed from Preferences → Profiles | 25 built-in presets + custom endpoint |
+| Path-style servers | A separate "deprecated path style" profile or a hidden setting | Set per connection, locked where the provider requires it |
+| Large buckets | Lists folders on demand | Local index for search across millions of objects |
+
+Where Cyberduck goes further
+
+One client for every protocol. If you also use SFTP, WebDAV or cloud drives, Cyberduck covers them all.
+Mountain Duck, a separate paid product from the same team, mounts storage as a drive in Finder or Explorer.
+Mature S3 features: versioning with revert and MFA Delete, Glacier restore and share links, documented in detail.
+A long track record: its oldest releases ran on Mac OS X 10.2.
+
+Where S3 Explorer goes further
+
+Linux desktop app. Cyberduck has no Linux GUI.
+S3-compatible setup without profiles. Pick the provider, and the endpoint format, region and addressing mode are filled in.
+Big buckets. The local index finds objects without re-listing. Cyberduck's documentation notes that listing may need an extra request per file to show modification dates, which slows large folders.
+S3-specific tools: per-request metrics with cost estimates, cleanup of incomplete multipart uploads, a built-in editor and previews.
+
+Which one to choose
+
+You use several protocols: Cyberduck.
+You work on Linux: S3 Explorer.
+You manage many S3-compatible providers or very large buckets: S3 Explorer.
+You want storage mounted as a drive: Mountain Duck (paid) or rclone mount.
+
+Sources
+
+Cyberduck and download page (version, license, donation key)
+Cyberduck S3 documentation (profiles, path-style, listing performance)
+Cyberduck installation requirements
+S3 Explorer pricing
+
+Comparison based on Cyberduck 9.5.4 and S3 Explorer 0.3.9, from each vendor's documentation on October 15, 2026. S3 Explorer is developed by the publisher of this site.
