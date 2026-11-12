@@ -293,6 +293,6 @@ Crates : `c2pa` (sans `openssl` ni `default_http` : pas d'OpenSSL système, pas 
 - [ ] **Démo navigateur (WebAssembly).**
   - [x] Le cœur compile pour `wasm32-unknown-unknown` sans modification (`c2pa` 0.92.0, `rust_native_crypto`, `pdf`). Vérifié le 2026-11-12 sous Node : 243 rapports identiques à ceux de la CLI (81 fichiers × 3 jeux d'options, dont `ai-proven` et `capture-proven` avec les racines de test, PDF compris).
   - [x] `bindings/wasm` (`wasm-bindgen` 0.2.130) : `check_text_json` et `check_bytes_json(bytes, effort?, trust_anchors_pem?)` ; une option invalide lève une `Error`.
-  - [x] `site/build.sh` produit `site/pkg/` (ignoré par git) : 6,5 Mo, 2,3 Mo en gzip (`wasm-opt -Oz` : 6,2 Mo, gzip inchangé, donc non utilisé). `site/engine.js` charge ce module ; la page ne fonctionne pas en `file://` et l'affiche.
+  - [x] `site/build.sh` produit `site/pkg/` (ignoré par git) : 6,5 Mo, 2,3 Mo en gzip (`wasm-opt -Oz` : 6,2 Mo, gzip inchangé, donc non utilisé). le `engine.js` de la page de démo charge ce module ; la page ne fonctionne pas en `file://` et l'affiche.
   - [ ] Construire `site/pkg/` en CI (cible `wasm32-unknown-unknown`, `wasm-bindgen-cli` épinglé) et le publier avec la page.
   - [ ] Réduire la taille (build sans `pdf`) et sortir le contrôle du fil principal (Web Worker) si les gros fichiers bloquent la page.

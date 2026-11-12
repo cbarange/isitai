@@ -142,7 +142,7 @@ interface Warning {
 
 ### 2.5 Du rapport à un libellé d'interface
 
-Pas de fonction `label()` dans la lib pour 0.1.0. Une table documentée, que l'application copie et traduit. La page de démo (`site/strings.js`) en est la référence.
+Pas de fonction `label()` dans la lib pour 0.1.0. Une table documentée, que l'application copie et traduit. La page de démo en est la référence (`strings.js`, dépôt `cbarange/isitai.cbarange.com`).
 
 | Verdict | Libellé | Ne jamais écrire |
 |---|---|---|
@@ -213,7 +213,7 @@ Vu dans l'arbre de travail : `Effort { Fast, Standard, Thorough }` ; `history: [
 - **Casse des clés.** `history_summary` et `digital_source_type` sont les premières clés du rapport en plusieurs mots. Choisir maintenant : garder `snake_case` partout dans le JSON (identique dans les trois langages, critère 5) et le déclarer tel quel dans `index.d.ts`. Ne pas convertir en `camelCase` côté Node.
 - **`history_summary` ne dit que des faits positifs**, et aucune valeur ne signifie « retouché sans IA » : c'est le bon choix, à conserver.
 - **Forme stable** : `history: []` et `history_summary: null` toujours présents, comme `warnings` (point 3 de la section 4).
-- **Libellés** : proposés dans `site/strings.js` (`history.summary.*`).
+- **Libellés** : proposés dans `strings.js` de la démo (`history.summary.*`).
 
 ## 3. Avant / après sur les quatre tâches courantes
 
@@ -283,7 +283,7 @@ Classé par importance. Aucun point ne touche aux règles de détection. Les poi
 - Erreurs Node avec `code` standard (`ENOENT`…) si napi-rs le permet simplement ; sinon garder le message actuel.
 - Une fonction `label(report, locale)` seulement si plusieurs intégrateurs recopient la table.
 - Entrée flux dans les bindings, seulement si un cas réel dépasse la mémoire et n'a pas de disque.
-- Variante navigateur (WASM) : `checkText` et `checkBytes` uniquement, pas de `checkFile`. La page `site/` attend déjà ce contrat dans `site/engine.js`.
+- Variante navigateur (WASM) : `checkText` et `checkBytes` uniquement, pas de `checkFile`. La page de démo attend déjà ce contrat dans son `engine.js`.
 
 ## 6. Points à vérifier par le développeur
 
