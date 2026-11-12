@@ -104,6 +104,8 @@ pub fn scan(input: &str, rules: &Rules) -> Vec<Evidence> {
             }),
         });
     }
+    // Rhetorical shape comes last: it describes the prose, and never decides the verdict.
+    out.extend(crate::rhetoric::scan(input));
     out
 }
 

@@ -5,6 +5,7 @@
 
 mod png;
 mod provenance;
+mod rhetoric;
 mod rules;
 mod text;
 mod xmp;
@@ -38,6 +39,9 @@ pub enum Layer {
     Provenance,
     Metadata,
     Artifact,
+    /// Rhetorical shape of a text: a description a human can check, never a signal.
+    /// [`verdict`] ignores it.
+    Rhetoric,
 }
 
 /// What a piece of evidence points to.
@@ -428,8 +432,15 @@ fn finish(
 /// Spec v0.1 verdict rules, applied in order. A proof is not cancelled by weaker
 /// contrary evidence, except that a capture is never claimed when there is any AI hint.
 pub fn verdict(evidence: &[Evidence]) -> Verdict {
+    // `Layer::Rhetoric` describes how a text is built, not where it comes from: formal
+    // human prose carries these patterns (legal notices, administrative letters). Letting
+    // them reach the verdict would turn every such letter into `ai-signal`.
+    let decisive: Vec<&Evidence> = evidence
+        .iter()
+        .filter(|e| e.layer != Layer::Rhetoric)
+        .collect();
     let has =
-        |o: Origin, min: Strength| evidence.iter().any(|e| e.origin == o && e.strength >= min);
+        |o: Origin, min: Strength| decisive.iter().any(|e| e.origin == o && e.strength >= min);
     let ai_any = has(Origin::Ai, Strength::Weak);
     let cap_any = has(Origin::Capture, Strength::Weak);
     let cap_proof = has(Origin::Capture, Strength::Proof);
@@ -443,7 +454,7 @@ pub fn verdict(evidence: &[Evidence]) -> Verdict {
     if ai_any && cap_any {
         return Verdict::Inconsistent;
     }
-    let mut weak_ids: Vec<&str> = evidence
+    let mut weak_ids: Vec<&str> = decisive
         .iter()
         .filter(|e| e.origin == Origin::Ai && e.strength == Strength::Weak)
         .map(|e| e.id.as_str())
