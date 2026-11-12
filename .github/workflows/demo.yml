@@ -3,6 +3,7 @@ name: Demo
 # Le dépôt de démonstration contient le module WASM déjà compilé : rien ne le reconstruit
 # ailleurs. Sans ce workflow, la démo dérive du code sans que personne ne le voie.
 # Voir docs/DEMO.md.
+# Le site lui-même vit dans le dépôt de démonstration : ici, on ne produit que le module.
 
 on:
   push:
@@ -78,7 +79,9 @@ jobs:
 
           git clone --depth 1 "https://x-access-token:${DEMO_TOKEN}@github.com/cbarange/isitai.cbarange.com.git" "$RUNNER_TEMP/demo"
           cd "$RUNNER_TEMP/demo"
-          cp "$GITHUB_WORKSPACE"/site/{index.html,app.js,engine.js,strings.js,style.css} .
+          # Le site (HTML, JS, CSS) appartient au dépôt de démonstration : il s'édite là-bas.
+          # Ce workflow ne remplace que le module compilé. Copier les fichiers statiques ici
+          # écraserait une modification faite à la main sur la démonstration.
           rm -rf pkg && cp -r "$GITHUB_WORKSPACE/site/pkg" pkg
 
           if git diff --quiet && [ -z "$(git status --porcelain)" ]; then

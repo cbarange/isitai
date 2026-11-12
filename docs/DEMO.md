@@ -1,49 +1,68 @@
-# Reconstruit et publie la démonstration WebAssembly.
+# La démonstration WebAssembly
 
-La démo vit dans un dépôt séparé, `cbarange/isitai.cbarange.com`, servi par Netlify sur
-`isitai.cbarange.com`. Elle n'est pas construite par Netlify : le dépôt contient le module
-WASM déjà compilé. Sans ce workflow, elle dérive silencieusement du code — c'est exactement
-ce qui a failli arriver, et seule une vérification manuelle l'a évité.
+`isitai.cbarange.com` est servie par Netlify depuis le dépôt
+[`cbarange/isitai.cbarange.com`](https://github.com/cbarange/isitai.cbarange.com), à chaque
+push. Ce dépôt-ci ne produit qu'une chose pour elle : le module `pkg/`.
 
-## Ce qui déclenche une republication
+## Qui possède quoi
 
-Un push sur `main` qui touche `site/`, `bindings/wasm/`, `crates/` ou les fichiers Cargo.
-Le workflow ne se déclenche pas pour une modification de documentation : reconstruire un
-module de 6,6 Mo pour un fichier markdown serait du gaspillage.
+| Objet | Où il vit | Qui le modifie |
+|---|---|---|
+| `index.html`, `app.js`, `engine.js`, `strings.js`, `style.css` | dépôt de démonstration | à la main, là-bas |
+| `pkg/isitai_wasm.js`, `pkg/isitai_wasm_bg.wasm` | dépôt de démonstration, produit ici | le workflow `Demo` |
+| `site/build.sh` | ce dépôt | à la main |
 
-`workflow_dispatch` permet de le lancer à la main après un changement d'environnement.
+Un fichier statique n'existe qu'à un seul endroit. Il a existé en double : les cinq fichiers
+ci-dessus étaient aussi dans `site/`. Deux copies identiques divergent toujours, et la copie
+qui gagne est celle que personne ne relit. Elles ont été retirées de ce dépôt.
+
+## Le workflow
+
+`.github/workflows/demo.yml` se déclenche sur un push vers `main` qui touche
+`bindings/wasm/`, `crates/`, `Cargo.toml`, `Cargo.lock` ou `site/build.sh`, plus
+`workflow_dispatch` pour un lancement manuel.
+
+Il télécharge le binaire officiel de `wasm-bindgen` à la version exacte qu'exige
+`bindings/wasm/Cargo.toml` (0.2.130) — pas `cargo install`, qui résoudrait la version —,
+construit le module, puis pousse **uniquement `pkg/`** dans le dépôt de démonstration :
+
+- **Ne jamais copier les fichiers statiques.** Le site appartient au dépôt de démonstration ;
+  les écraser depuis ici annulerait une modification faite à la main.
+- **Idempotent** : si le module reconstruit est identique, aucun commit n'est créé. Le dépôt de
+  démonstration ne produit pas de bruit de déploiements inutiles.
+- **Traçable** : le message de commit porte le SHA court de ce dépôt, comme les précédents
+  (`Update the demo to isitai 35d2579`).
 
 ## Le secret nécessaire
 
 | Secret | Portée | Pourquoi un jeton séparé |
 |---|---|---|
-| `DEMO_TOKEN` | `cbarange/isitai.cbarange.com`, Contents: Read and write | Le `GITHUB_TOKEN` d'un workflow ne peut écrire que dans **son** dépôt. Publier ailleurs demande un jeton dédié |
-
-Création, une fois :
+| `DEMO_TOKEN` | `cbarange/isitai.cbarange.com`, Contents: Read and write | Le `GITHUB_TOKEN` d'un workflow ne peut écrire que dans son propre dépôt |
 
 ```bash
 gh secret set DEMO_TOKEN --repo cbarange/isitai
 ```
 
-Le jeton est un jeton fine-grained limité à ce seul dépôt, avec `Contents: Read and write`
-et une expiration courte. Il ne doit rien pouvoir faire d'autre : s'il fuit, la perte est un
-site de démonstration écrasé, pas un dépôt de code.
+Jeton fine-grained, limité à ce seul dépôt, expiration courte. S'il fuit, la perte est une
+démonstration écrasée, pas du code source.
 
-Sans ce secret, le workflow ne casse pas : il s'arrête sur un message explicite dans le
-résumé du job. Un travail silencieusement ignoré est un travail qui disparaît.
+Sans ce secret, le job ne casse pas : il s'arrête sur un message dans le résumé du job. Un
+travail silencieusement ignoré est un travail qui n'existe pas — mais un job rouge parce qu'un
+secret optionnel manque est du bruit qui apprend à ignorer le rouge.
 
-## Ce que le workflow garantit
+## Savoir si un rebuild est nécessaire
 
-- **Idempotence** : si le module reconstruit est identique à celui du dépôt de démo, aucun
-  commit n'est créé. Une republication sans changement ne produit pas de bruit.
-- **Traçabilité** : le message de commit porte le SHA court du dépôt source, comme les
-  commits précédents (`Update the demo to isitai 35d2579`).
-- **Reproductibilité** : la version de `wasm-bindgen` est épinglée à celle qu'exige
-  `bindings/wasm/Cargo.toml` (0.2.130). Une version décalée produit un module incompatible,
-  pas une erreur de build : le binaire est téléchargé depuis la release officielle, pas
-  installé par `cargo install`, pour que la version soit exacte et non résolue.
+La mauvaise question est « le dépôt de démonstration est-il récent ». La bonne : **du code
+a-t-il changé depuis le SHA inscrit dans son dernier commit ?**
 
-## Vérifier que la démo est à jour
+```bash
+git log --oneline 35d2579..HEAD -- crates/ bindings/ Cargo.toml Cargo.lock
+```
+
+Aucune ligne = aucun rebuild nécessaire, même si la démo semble ancienne. Une modification de
+documentation ne change pas le module.
+
+Vérifier que le site en ligne sert bien le dépôt :
 
 ```bash
 curl -s https://isitai.cbarange.com/pkg/isitai_wasm_bg.wasm | sha256sum
@@ -51,12 +70,6 @@ git clone --depth 1 https://github.com/cbarange/isitai.cbarange.com && \
   sha256sum isitai.cbarange.com/pkg/isitai_wasm_bg.wasm
 ```
 
-Les deux empreintes doivent être égales. Pour savoir si un rebuild est nécessaire, la
-question n'est pas « le dépôt de démo est-il récent » mais « du code a-t-il changé depuis le
-SHA inscrit dans son dernier commit » :
-
-```bash
-git log --oneline 35d2579..HEAD -- crates/ bindings/ Cargo.toml Cargo.lock
-```
-
-Aucune ligne = aucun rebuild nécessaire, même si le dépôt de démo semble ancien.
+Les deux empreintes doivent être égales. Le 2026-11-12 elles l'étaient, et le module datait de
+`35d2579` : la démo était à jour, mais rien ne garantissait qu'elle le reste — c'est ce que ce
+workflow corrige.
