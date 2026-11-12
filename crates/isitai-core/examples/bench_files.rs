@@ -1,17 +1,24 @@
 //! In-process timing of `check_reader` per file, same protocol as bench/compare/*.
-//! Usage: cargo run --release --example bench_files -- <iterations> FILE...
+//! Usage: cargo run --release --example bench_files -- <iterations> [--effort fast|standard] FILE...
 //! Prints one JSON line per file: {"file", "first_ms", "median_ms", "p95_ms", "verdict"}.
 
 use isitai::{check_reader, Options, Rules};
 use std::{fs::File, io::BufReader, time::Instant};
 
 fn main() {
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args().skip(1).peekable();
     let iterations: usize = args.next().and_then(|n| n.parse().ok()).unwrap_or(20);
     let start = Instant::now();
     let rules = Rules::embedded();
     eprintln!("rules_init_ms={:.3}", start.elapsed().as_secs_f64() * 1e3);
-    let opts = Options::default();
+    let mut opts = Options::default();
+    if args.next_if(|a| a == "--effort").is_some() {
+        opts.effort = args
+            .next()
+            .expect("--effort needs a value")
+            .parse()
+            .unwrap();
+    }
 
     for path in args {
         let mut times = Vec::with_capacity(iterations);

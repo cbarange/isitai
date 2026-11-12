@@ -1,14 +1,28 @@
 //! Native module `isitai._isitai`. Returns JSON strings produced by the Rust core;
 //! the Python wrapper parses them, so every language gets the same bytes.
 
-use isitai::{check_bytes, check_path, check_text, Options, Rules};
+use isitai::{check_bytes, check_path, check_text, validate_trust_anchors, Options, Rules};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-fn options(trust_anchors_pem: Option<String>, declared_mime: Option<String>) -> Options {
-    Options {
+/// Fails on an unknown `effort` and on unusable trust anchors; `None` means the default.
+fn options(
+    trust_anchors_pem: Option<String>,
+    declared_mime: Option<String>,
+    effort: Option<String>,
+) -> PyResult<Options> {
+    if let Some(pem) = &trust_anchors_pem {
+        validate_trust_anchors(pem).map_err(PyValueError::new_err)?;
+    }
+    let effort = effort
+        .map(|e| e.parse().map_err(PyValueError::new_err))
+        .transpose()?
+        .unwrap_or_default();
+    Ok(Options {
         trust_anchors_pem,
         declared_mime,
-    }
+        effort,
+    })
 }
 
 #[pyfunction]
@@ -17,26 +31,28 @@ fn check_text_json(py: Python<'_>, text: String) -> String {
 }
 
 #[pyfunction]
-#[pyo3(signature = (data, trust_anchors_pem=None, declared_mime=None))]
+#[pyo3(signature = (data, trust_anchors_pem=None, declared_mime=None, effort=None))]
 fn check_bytes_json(
     py: Python<'_>,
     data: Vec<u8>,
     trust_anchors_pem: Option<String>,
     declared_mime: Option<String>,
-) -> String {
-    let opts = options(trust_anchors_pem, declared_mime);
-    py.detach(|| check_bytes(&data, &opts, Rules::shared()).to_json())
+    effort: Option<String>,
+) -> PyResult<String> {
+    let opts = options(trust_anchors_pem, declared_mime, effort)?;
+    Ok(py.detach(|| check_bytes(&data, &opts, Rules::shared()).to_json()))
 }
 
 #[pyfunction]
-#[pyo3(signature = (path, trust_anchors_pem=None, declared_mime=None))]
+#[pyo3(signature = (path, trust_anchors_pem=None, declared_mime=None, effort=None))]
 fn check_file_json(
     py: Python<'_>,
     path: std::path::PathBuf,
     trust_anchors_pem: Option<String>,
     declared_mime: Option<String>,
+    effort: Option<String>,
 ) -> PyResult<String> {
-    let opts = options(trust_anchors_pem, declared_mime);
+    let opts = options(trust_anchors_pem, declared_mime, effort)?;
     let report = py.detach(|| check_path(&path, &opts, Rules::shared()))?;
     Ok(report.to_json())
 }

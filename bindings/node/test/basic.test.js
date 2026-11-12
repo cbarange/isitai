@@ -36,6 +36,37 @@ test('checkFile streams a PNG written by Stable Diffusion WebUI', async () => {
   assert.deepStrictEqual(check(png), fromFile);
 });
 
+test('effort: fast skips the XMP scan, an unknown value is an error', async () => {
+  const xmp =
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:Description Iptc4xmpExt:DigitalSourceType="http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"/></x:xmpmeta>';
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(xmp)]);
+  assert.strictEqual(check(jpeg).verdict, 'ai-signal');
+  assert.strictEqual(check(jpeg, { effort: 'standard' }).verdict, 'ai-signal');
+  assert.strictEqual(check(jpeg, { effort: 'fast' }).verdict, 'no-signal');
+  assert.throws(() => check(jpeg, { effort: 'thorough' }), /unknown effort `thorough`/);
+  assert.throws(() => check(jpeg, { effort: 'turbo' }), /unknown effort `turbo`/);
+  await assert.rejects(checkFile(__filename, { effort: 'turbo' }), /unknown effort `turbo`/);
+});
+
+test('unusable trust anchors are an error, not a silent loss of C2PA reading', async () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+  for (const pem of ['', 'not a pem file']) {
+    assert.throws(() => check(jpeg, { trustAnchorsPem: pem }), /trust anchors: no PEM certificate block/);
+    await assert.rejects(checkFile(__filename, { trustAnchorsPem: pem }), /trust anchors: no PEM certificate block/);
+  }
+  const junk = '-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----\n';
+  assert.throws(() => check(jpeg, { trustAnchorsPem: junk }), /trust anchors: .*no certificate that can be loaded/);
+  // No anchors at all stays valid.
+  assert.strictEqual(check(jpeg, { trustAnchorsPem: undefined }).verdict, 'no-signal');
+});
+
+test('text rules run inside an HTML file', () => {
+  const html = Buffer.from('<!DOCTYPE html>\n<p>Paris :contentReference[oaicite:0]{index=0}</p>');
+  const r = check(html);
+  assert.strictEqual(r.media, 'text/html');
+  assert.strictEqual(r.verdict, 'ai-signal');
+});
+
 test('checkFile rejects a missing file', async () => {
   await assert.rejects(checkFile('/definitely/missing.jpg'));
 });

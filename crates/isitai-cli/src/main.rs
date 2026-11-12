@@ -1,7 +1,9 @@
-//! Usage: isitai [--anchors roots.pem] [--text "string"] [FILE...]
-//! Prints one JSON report per input. Exit: 0 no-signal, 1 AI signal or proof, 2 error.
+//! Usage: isitai [--anchors roots.pem] [--effort fast|standard] [--text "string"] [FILE...]
+//! Options apply to the files that follow them.
+//! Prints one JSON report per input. Exit: 0 nothing found (which does not mean
+//! human-made), 1 AI signal or proof, 2 error.
 
-use isitai::{check_reader, check_text, Options, Rules, Verdict};
+use isitai::{check_reader, check_text, validate_trust_anchors, Options, Rules, Verdict};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -13,16 +15,24 @@ fn main() -> ExitCode {
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--anchors" => match args.next().map(std::fs::read_to_string) {
-                Some(Ok(pem)) => opts.trust_anchors_pem = Some(pem),
-                _ => return usage("--anchors needs a readable PEM file"),
+            "--anchors" => match read_anchors(args.next()) {
+                Ok(pem) => opts.trust_anchors_pem = Some(pem),
+                Err(e) => return usage(&e),
+            },
+            "--effort" => match args.next().as_deref().map(str::parse) {
+                Some(Ok(effort)) => opts.effort = effort,
+                Some(Err(e)) => return usage(&e),
+                None => return usage("--effort needs a value"),
             },
             "--text" => match args.next() {
                 Some(t) => reports.push(serde_json::to_value(check_text(&t, &rules)).unwrap()),
                 None => return usage("--text needs a value"),
             },
             "-h" | "--help" => return usage(""),
-            path => match std::fs::File::open(path) {
+            unknown if unknown.starts_with("--") => {
+                return usage(&format!("unknown option `{unknown}`"))
+            }
+            path => match open_file(path) {
                 Ok(file) => {
                     let file_opts = Options {
                         declared_mime: mime_from_ext(path),
@@ -59,6 +69,23 @@ fn main() -> ExitCode {
     }
 }
 
+/// Reads the PEM bundle given to `--anchors` and checks that it is usable.
+fn read_anchors(path: Option<String>) -> Result<String, String> {
+    let path = path.ok_or("--anchors needs a PEM file")?;
+    let pem = std::fs::read_to_string(&path).map_err(|e| format!("--anchors {path}: {e}"))?;
+    validate_trust_anchors(&pem).map_err(|e| format!("--anchors {path}: {e}"))?;
+    Ok(pem)
+}
+
+/// Opens a regular file. A directory opens without error on Unix, so it is refused here.
+fn open_file(path: &str) -> std::io::Result<std::fs::File> {
+    let file = std::fs::File::open(path)?;
+    if file.metadata()?.is_dir() {
+        return Err(std::io::Error::other("is a directory"));
+    }
+    Ok(file)
+}
+
 /// MIME implied by the file extension, compared with the sniffed type to flag polyglots.
 /// Only formats whose sniffed MIME (crate `infer`) matches exactly are listed.
 fn mime_from_ext(path: &str) -> Option<String> {
@@ -85,6 +112,11 @@ fn usage(msg: &str) -> ExitCode {
     if !msg.is_empty() {
         eprintln!("error: {msg}");
     }
-    eprintln!("usage: isitai [--anchors roots.pem] [--text \"string\"] [FILE...]");
+    eprintln!(
+        "usage: isitai [--anchors roots.pem] [--effort fast|standard] [--text \"string\"] [FILE...]"
+    );
+    eprintln!("Options apply to the files that follow them.");
+    eprintln!("Exit code: 0 nothing found, 1 AI signal or proof, 2 error.");
+    eprintln!("Exit code 0 does not mean human-made: it means no proof and no signal was found.");
     ExitCode::from(2)
 }

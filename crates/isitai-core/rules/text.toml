@@ -14,11 +14,13 @@ id = "text.citeturn"
 strength = "strong"
 verified = false
 detail = "ChatGPT search citation token left by copy-paste"
-pattern = '\bturn\d+(?:search|news|view|fetch|file|image)\d+\b'
+# `cite` is glued to the token in pasted text ("citeturn0search3").
+pattern = '(?:\b|cite)turn\d+(?:search|news|view|fetch|file|image)\d+\b'
 
 [[rule]]
 id = "text.utm-ai"
-strength = "strong"
+# Weak: the tag describes a link, not the text around it.
+strength = "weak"
 verified = false
 detail = "Link tagged by an AI assistant"
 pattern = 'utm_source=(?:chatgpt\.com|openai)\b'
@@ -27,8 +29,13 @@ pattern = 'utm_source=(?:chatgpt\.com|openai)\b'
 id = "text.self-disclosure"
 strength = "strong"
 verified = false
+# The assistant's own voice is required: the phrase must be followed by the pronoun
+# "I" (case-sensitive) or ", je". Human sentences that must not match:
+# "As an AI model grows, ...", "as an AI language model gets deployed ...",
+# "As an AI researcher, I think ...", "En tant qu'intelligence artificielle
+# générative, ChatGPT ...".
 detail = "Assistant self-disclosure phrase"
-pattern = '(?i)\bas an AI (?:language )?model\b|\bas of my (?:last )?knowledge (?:update|cutoff)\b|\ben tant qu(?:e |\x27|’)(?:modèle de langage|IA\b|intelligence artificielle)'
+pattern = '(?i:\bas an AI(?: language)?(?: model| assistant)?),? I\b|(?i:\bas of my (?:last )?knowledge (?:update|cutoff)\b)|(?i:\ben tant qu(?:e |\x27|’)(?:modèle de langage|IA|intelligence artificielle), je\b)'
 
 [[rule]]
 id = "text.zero-width"
@@ -38,10 +45,3 @@ verified = false
 # U+202F / U+00A0 are normal French typography and are never rules.
 detail = "Zero-width character inside the text"
 pattern = '[\x{200B}\x{2060}]|.\x{FEFF}'
-
-[[rule]]
-id = "text.markdown-residue"
-strength = "weak"
-verified = false
-detail = "Markdown formatting left in plain text"
-pattern = '(?m)^#{2,6} \S|\*\*[^*\n]{2,80}\*\*'

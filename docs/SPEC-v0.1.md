@@ -56,10 +56,24 @@ from isitai import check, check_text, check_file
 CLI :
 
 ```bash
-isitai photo.jpg essay.txt --json
+isitai [--anchors racines.pem] [--effort fast|standard] [--text "…"] photo.jpg essay.txt
 ```
 
-Sortie de la CLI : code `0` = `no-signal`, `1` = signal ou preuve IA, `2` = erreur.
+La sortie est toujours du JSON. Les options s'appliquent aux fichiers qui les suivent.
+
+Sortie de la CLI : code `0` = rien trouvé, `1` = signal ou preuve IA, `2` = erreur. Le code `0` ne veut pas dire « fait par un humain ».
+
+Erreurs (code `2`) : option inconnue commençant par `--`, fichier illisible, dossier, fichier `--anchors` inutilisable.
+
+### Ancres de confiance
+
+Un PEM d'ancres inutilisable est une erreur, jamais une perte silencieuse de la lecture C2PA. Le cœur expose `validate_trust_anchors(pem)` : le PEM doit contenir au moins un bloc `CERTIFICATE` et être accepté par `c2pa`. La CLI sort en code `2`, Node lève une `Error`, Python lève `ValueError`. Les fonctions `check*` du cœur restent sans échec.
+
+### Effort
+
+`effort` vaut `fast` ou `standard` (défaut). Le texte l'ignore.
+
+`fast` skips the XMP scan of the whole file; C2PA validation may still read a signed file whole; `fast` can miss unsigned metadata, including a contradiction that `standard` would report.
 
 ## Schéma de sortie
 
@@ -89,38 +103,49 @@ interface Evidence {
 }
 ```
 
-Règles de verdict, appliquées dans l'ordre :
+Règles de verdict, appliquées dans l'ordre. Une preuve (`proof`) n'est pas annulée par un indice contraire plus faible.
 
-1. Un C2PA valide à certificat de confiance, avec un `digitalSourceType` IA, donne `ai-proven`.
-2. Un C2PA valide à certificat de confiance, avec `digitalCapture`, et sans indice IA, donne `capture-proven`.
-3. Des indices IA et capture qui se contredisent donnent `inconsistent`.
-4. Au moins une preuve `strong`, ou deux `weak` distinctes, donnent `ai-signal`.
-5. Sinon : `no-signal`.
+1. Une preuve IA, sans preuve de capture, donne `ai-proven`. Les indices de capture plus faibles restent listés dans `evidence`.
+2. Une preuve de capture, sans aucun indice IA, donne `capture-proven`.
+3. Une preuve de capture avec un indice IA, quel qu'il soit, donne `inconsistent` : on n'affirme jamais une capture quand quelque chose pointe vers l'IA.
+4. Sinon, des indices IA et capture présents ensemble donnent `inconsistent`.
+5. Au moins un indice IA `strong`, ou deux `weak` distincts, donnent `ai-signal`.
+6. Sinon : `no-signal`.
 
 ## Règles de détection
 
 ### Image, couche provenance (C2PA via le crate `c2pa`)
 
 - Lire le manifeste actif et l'état de validation.
-- Repérer les `digitalSourceType` IA dans les actions `c2pa.created` et `c2pa.edited` :
+- Repérer les `digitalSourceType` IA dans les actions du manifeste actif :
   - `trainedAlgorithmicMedia` ;
-  - `compositeWithTrainedAlgorithmicMedia` ;
-  - `algorithmicMedia`.
-- Capture : `digitalCapture`.
-- Prendre `claim_generator_info` comme `generator`.
+  - `compositeWithTrainedAlgorithmicMedia`.
+- `algorithmicMedia` n'est pas une source IA : l'IPTC le définit comme un média produit par un algorithme sans données d'entraînement.
+- Capture : `digitalCapture`, `computationalCapture`.
+- Force d'un type déclaré par le manifeste actif : `proof` si le manifeste est de confiance, `strong` s'il est valide, `weak` s'il est invalide.
+- Un type hérité du manifeste d'un ingrédient (l'action n'en déclare pas elle-même) donne aussi un indice, plafonné à `strong`, jamais `proof` : la confiance du manifeste de l'ingrédient n'est pas vérifiée. Le détail de l'indice dit qu'il vient d'un ingrédient. Conséquence : une image IA de confiance ouverte puis recadrée dans un autre outil donne `ai-signal` avec `history_summary` = `ai-then-edited`.
+- Si la chaîne déclare une source IA, la provenance ne donne aucun indice de capture : « capture puis retouche IA » est un contenu retouché par IA, pas une contradiction.
+- Prendre `claim_generator_info` comme `generator`, sauf si le manifeste est invalide.
+- Manifeste invalide : avertissement « C2PA manifest is invalid: the file changed after signing, or the manifest is broken », pas de `generator`, pas de `history_summary` ; `history` reste listé.
+- Bornes face à un manifeste hostile : `history` garde au plus 64 actions (avertissement au-delà) ; les noms d'action, de type de source et de logiciel sont coupés à 128 caractères.
+- Dans `history`, un `digital_source_type` hérité est celui de la première action de l'ingrédient, et seulement celle-là.
 - **Piège** : n'importe qui peut auto-signer un manifeste. Il faut donc `verify_trust: true` et les trust anchors de la liste de confiance C2PA, embarquée et versionnée. Une signature valide sur un certificat non fiable ne donne que `ai-signal`.
 - **Piège** : `remote_manifest_fetch` vaut `true` par défaut. Il faut le forcer à `false` (et laisser `ocsp_fetch: false`), sinon la lib fait des appels réseau.
 
 ### Image, couche métadonnées
 
 - XMP/IPTC `Iptc4xmpExt:DigitalSourceType` avec une valeur IA : `strong`, car non signé.
-- Chunks PNG `tEXt`/`iTXt` :
-  - `parameters` (A1111/Forge) ;
-  - `prompt` et `workflow` (ComfyUI) ;
-  - `invokeai_metadata` ;
-  - `Software: NovelAI`.
+- Chunks PNG `tEXt` et `iTXt` non compressé. Une clé seule n'est pas un indice : la valeur doit contenir un marqueur (`rules/metadata.toml`).
 
-  Tous donnent `strong`, avec `generator` renseigné.
+  | Clé | Marqueur exigé dans la valeur | Générateur |
+  |---|---|---|
+  | `parameters` | `Steps:` | A1111/Forge |
+  | `prompt` | `class_type` | ComfyUI |
+  | `workflow` | `nodes` | ComfyUI |
+  | `invokeai_metadata` | `{` | InvokeAI |
+  | `Software` | valeur égale à `NovelAI`, espaces de bord retirés | NovelAI |
+
+  Tous donnent `strong`, avec `generator` renseigné. Chaque id d'indice sort au plus une fois par fichier. Les valeurs compressées (`zTXt`, `iTXt` compressé) ne sont pas décompressées : elles sont ignorées.
 - EXIF `Software` ou `Make` connus d'un générateur : `weak`.
 
 ### Texte, couche artefacts
@@ -128,12 +153,16 @@ Règles de verdict, appliquées dans l'ordre :
 | id | Motif | Force |
 |---|---|---|
 | `text.oaicite` | `:contentReference[oaicite:N]{index=N}`, `【oaicite:N】` | strong |
-| `text.citeturn` | `citeturn\d+search\d+` et variantes | strong |
-| `text.utm-ai` | `utm_source=chatgpt.com`, `utm_source=openai` | strong |
-| `text.self-disclosure` | « As an AI language model », « En tant que modèle de langage », « as of my last knowledge update » | strong |
+| `text.citeturn` | `turn0search3` et variantes (`news`, `view`, `fetch`, `file`, `image`), isolé ou collé à `cite` (`citeturn0search3`) | strong |
+| `text.utm-ai` | `utm_source=chatgpt.com`, `utm_source=openai` | weak : le marqueur décrit un lien, pas le texte |
+| `text.self-disclosure` | La voix de l'assistant : « as an AI language model » ; « as an AI » suivi, à quatre mots au plus, de « I » ; « as of my (last) knowledge update/cutoff » ; « en tant que modèle de langage », « en tant qu'IA », « en tant qu'intelligence artificielle » suivis de « , je » | strong |
 | `text.zero-width` | U+200B, U+2060, U+FEFF au milieu du texte | weak |
-| `text.markdown-residue` | `**gras**`, `### titre` dans un champ texte brut | weak |
 
+Toutes ces règles restent marquées `verified = false` tant qu'elles ne sont pas confirmées sur un corpus réel.
+
+- Il n'y a pas de règle sur le Markdown : `**gras**` et `### titre` touchent 81 % des fichiers Markdown réels.
+- `text.self-disclosure` ne doit pas toucher une phrase humaine comme « As an AI model grows, its training bill grows faster. » ou « En tant qu'intelligence artificielle générative, ChatGPT … ».
+- Les règles texte tournent aussi sur le contenu d'un fichier reconnu comme texte par le crate `infer` (`text/*` : HTML, XML, script shell ; et SVG), en plus des autres couches, dans la limite `MAX_TEXT_BYTES`. Un texte non UTF-8 ou plus long que la limite donne un avertissement : le texte n'a pas été analysé, ou pas en entier.
 - **Piège** : U+200D (ZWJ) est légitime dans les emojis composés. On l'ignore entre deux emojis.
 - **Piège** : U+202F et U+00A0 sont de la typographie française normale (`« »`, `:`, `?`). On ne s'en sert jamais comme signal.
 - **Piège** : le tiret cadratin et les tournures « IA » ne sont pas des preuves. On les exclut de la v0.1.

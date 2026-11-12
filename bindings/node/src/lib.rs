@@ -1,15 +1,28 @@
 //! Native addon for the `isitai` npm package. Returns JSON strings produced by the
 //! Rust core; `index.js` parses them, so every language gets the same bytes.
 
-use isitai::{check_bytes, check_path, check_text, Options, Rules};
+use isitai::{check_bytes, check_path, check_text, validate_trust_anchors, Options, Rules};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-fn options(trust_anchors_pem: Option<String>, declared_mime: Option<String>) -> Options {
-    Options {
+/// Fails on an unknown `effort` and on unusable trust anchors; `None` means the default.
+fn options(
+    trust_anchors_pem: Option<String>,
+    declared_mime: Option<String>,
+    effort: Option<String>,
+) -> Result<Options> {
+    if let Some(pem) = &trust_anchors_pem {
+        validate_trust_anchors(pem).map_err(Error::from_reason)?;
+    }
+    let effort = effort
+        .map(|e| e.parse().map_err(Error::from_reason))
+        .transpose()?
+        .unwrap_or_default();
+    Ok(Options {
         trust_anchors_pem,
         declared_mime,
-    }
+        effort,
+    })
 }
 
 #[napi]
@@ -23,13 +36,10 @@ pub fn check_buffer_json(
     data: Buffer,
     trust_anchors_pem: Option<String>,
     declared_mime: Option<String>,
-) -> String {
-    check_bytes(
-        &data,
-        &options(trust_anchors_pem, declared_mime),
-        Rules::shared(),
-    )
-    .to_json()
+    effort: Option<String>,
+) -> Result<String> {
+    let opts = options(trust_anchors_pem, declared_mime, effort)?;
+    Ok(check_bytes(&data, &opts, Rules::shared()).to_json())
 }
 
 pub struct CheckFileTask {
@@ -62,9 +72,10 @@ pub fn check_file_json(
     path: String,
     trust_anchors_pem: Option<String>,
     declared_mime: Option<String>,
-) -> AsyncTask<CheckFileTask> {
-    AsyncTask::new(CheckFileTask {
+    effort: Option<String>,
+) -> Result<AsyncTask<CheckFileTask>> {
+    Ok(AsyncTask::new(CheckFileTask {
         path,
-        opts: options(trust_anchors_pem, declared_mime),
-    })
+        opts: options(trust_anchors_pem, declared_mime, effort)?,
+    }))
 }

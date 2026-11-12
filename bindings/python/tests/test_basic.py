@@ -37,6 +37,41 @@ class BasicTest(unittest.TestCase):
         self.assertEqual(from_file["generator"], "Stable Diffusion WebUI (A1111/Forge)")
         self.assertEqual(isitai.check(PNG), from_file)
 
+    def test_effort(self):
+        xmp = (
+            b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:Description Iptc4xmpExt:DigitalSourceType='
+            b'"http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"/></x:xmpmeta>'
+        )
+        jpeg = b"\xff\xd8\xff\xe0" + xmp
+        self.assertEqual(isitai.check(jpeg)["verdict"], "ai-signal")
+        self.assertEqual(isitai.check(jpeg, effort="standard")["verdict"], "ai-signal")
+        self.assertEqual(isitai.check(jpeg, effort="fast")["verdict"], "no-signal")
+        with self.assertRaisesRegex(ValueError, "unknown effort `thorough`"):
+            isitai.check(jpeg, effort="thorough")
+        with self.assertRaisesRegex(ValueError, "unknown effort `turbo`"):
+            isitai.check(jpeg, effort="turbo")
+        with self.assertRaisesRegex(ValueError, "unknown effort `turbo`"):
+            isitai.check_file(__file__, effort="turbo")
+
+    def test_unusable_trust_anchors_raise(self):
+        jpeg = b"\xff\xd8\xff\xe0"
+        for pem in ("", "not a pem file"):
+            with self.assertRaisesRegex(ValueError, "trust anchors: no PEM certificate block"):
+                isitai.check(jpeg, trust_anchors_pem=pem)
+            with self.assertRaisesRegex(ValueError, "trust anchors: no PEM certificate block"):
+                isitai.check_file(__file__, trust_anchors_pem=pem)
+        junk = "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----\n"
+        with self.assertRaisesRegex(ValueError, "trust anchors: .*no certificate that can be loaded"):
+            isitai.check(jpeg, trust_anchors_pem=junk)
+        # No anchors at all stays valid.
+        self.assertEqual(isitai.check(jpeg, trust_anchors_pem=None)["verdict"], "no-signal")
+
+    def test_text_rules_run_inside_an_html_file(self):
+        html = "<!DOCTYPE html>\n<p>Paris :contentReference[oaicite:0]{index=0}</p>".encode()
+        r = isitai.check(html)
+        self.assertEqual(r["media"], "text/html")
+        self.assertEqual(r["verdict"], "ai-signal")
+
     def test_missing_file_raises(self):
         with self.assertRaises(OSError):
             isitai.check_file("/definitely/missing.jpg")

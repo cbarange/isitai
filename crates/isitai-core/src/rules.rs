@@ -47,12 +47,15 @@ impl Dst {
 #[derive(Deserialize, Clone)]
 pub struct PngKey {
     pub key: String,
+    /// Text the chunk value must contain for the keyword to count.
+    pub marker: String,
     pub generator: String,
 }
 
 #[derive(Deserialize, Clone)]
 pub struct PngSoftware {
-    pub contains: String,
+    /// The trimmed `Software` value must equal this text.
+    pub equals: String,
     pub generator: String,
 }
 
