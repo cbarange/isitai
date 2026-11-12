@@ -25,7 +25,10 @@ confidence-threshold = 0.9
 
 [bans]
 multiple-versions = "warn"
-wildcards = "deny"
+# Les crates du workspace se référencent par chemin : ce n'est pas un joker de version,
+# cargo le résout en version exacte à la publication. Un vrai joker hors workspace reste
+# signalé par la revue, pas par cette règle.
+wildcards = "warn"
 
 [sources]
 unknown-registry = "deny"
