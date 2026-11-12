@@ -133,7 +133,7 @@ jobs:
       - name: Lint des workflows
         uses: reviewdog/action-actionlint@v1
         with:
-          fail_on_error: true
+          fail_level: error
       - name: Licences, doublons et sources des dépendances
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
