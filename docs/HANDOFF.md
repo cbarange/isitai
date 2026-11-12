@@ -5,7 +5,7 @@ Note pour reprendre le travail dans une nouvelle session (autre compte, ou aprè
 ## État du dépôt
 
 - Tout le code livré est sur `main` et la CI est verte au commit `35d2579` (dernier commit : `3b30914`, documentation seule).
-- Démo : dépôt `cbarange/isitai.cbarange.com`, déployée par Netlify à chaque push. Dernier build : isitai `35d2579`.
+- Démo : dépôt `cbarange/isitai.cbarange.com` — c'est là que vit le site (HTML, JS, CSS), déployé par Netlify à chaque push. Ce dépôt-ci ne produit que le module WASM (`site/build.sh` → `site/pkg/`). Dernier module : isitai `35d2579`.
 - Non commité : `corpus/` (voir « Corpus » plus bas).
 
 ## Banc d'essai des détecteurs de texte : terminé, non relu

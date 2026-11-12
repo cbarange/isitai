@@ -192,16 +192,16 @@ In a shell script, set `set -o pipefail`: when the download fails, isitai receiv
 
 ### Browser / WebAssembly
 
-The core also runs in a browser, with no server. `bindings/wasm` compiles it to `wasm32-unknown-unknown` and exposes `check_text_json(text)` and `check_bytes_json(bytes, effort?, trust_anchors_pem?)`, which return the same JSON as the other bindings (there is no file-path function). The demo page in `site/` uses it: the file is read and checked inside the page and is never uploaded.
+The core also runs in a browser, with no server. `bindings/wasm` compiles it to `wasm32-unknown-unknown` and exposes `check_text_json(text)` and `check_bytes_json(bytes, effort?, trust_anchors_pem?)`, which return the same JSON as the other bindings (there is no file-path function). The demo page ([isitai.cbarange.com](https://isitai.cbarange.com)) uses it: the file is read and checked inside the page and is never uploaded. The page lives in its own repository, [`cbarange/isitai.cbarange.com`](https://github.com/cbarange/isitai.cbarange.com); this repository only produces the WebAssembly module.
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.130 --locked
 site/build.sh                           # writes site/pkg/ (about 6.5 MB, 2.3 MB gzipped)
-python3 -m http.server -d site 8000     # then open http://localhost:8000/
+# then copy site/pkg/ into the demo repository, or let the Demo workflow do it
 ```
 
-`site/` is static and uses relative paths only, so it can be hosted at a domain root or under a sub-path. It needs http(s): opened from disk (`file://`), a browser refuses to load the WebAssembly module and the page says so. The page reads a file whole into memory and refuses files over 256 MB; a check runs on the main thread.
+The page uses relative paths only, so it can be hosted at a domain root or under a sub-path. It needs http(s): opened from disk (`file://`), a browser refuses to load the WebAssembly module and the page says so. It reads a file whole into memory and refuses files over 256 MB; a check runs on the main thread.
 
 ## What it reads
 
