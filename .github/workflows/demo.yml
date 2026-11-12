@@ -85,7 +85,10 @@ jobs:
           rm -rf pkg && cp -r "$GITHUB_WORKSPACE/site/pkg" pkg
 
           if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
-            echo "::notice::démo déjà à jour, aucun commit créé"
+            # Un clone réussi ne prouve que la lecture. Le dry-run prouve que le jeton peut
+            # écrire, sans rien créer : c'est la panne silencieuse la plus coûteuse ici.
+            git push --dry-run origin HEAD:main
+            echo "::notice::démo déjà à jour, aucun commit créé ; droits d'écriture vérifiés"
             exit 0
           fi
 
