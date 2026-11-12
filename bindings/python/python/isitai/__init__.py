@@ -43,9 +43,11 @@ def check_file(
     """Checks a file by path. The file is streamed, never loaded whole.
 
     ``trust_anchors_pem``: PEM bundle of trusted C2PA roots. It replaces the default,
-    which is the official C2PA trust list embedded in the library. A valid C2PA
-    manifest whose signer does not chain to the roots in use gives at most
-    ``ai-signal``. A bundle without a usable certificate raises ``ValueError``.
+    which is the two official C2PA trust lists embedded in the library (manifest
+    signers, time-stamp authorities). The bundle is used for both, so it must also
+    hold the roots of the time-stamps to trust. A valid C2PA manifest whose signer
+    does not chain to the roots in use gives at most ``ai-signal``. A bundle without
+    a usable certificate raises ``ValueError``.
 
     ``effort``: ``"standard"`` (default; every layer) or ``"fast"``. ``"fast"`` skips
     the XMP scan of the whole file; C2PA validation may still read a signed file whole;

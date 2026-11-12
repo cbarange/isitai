@@ -46,7 +46,7 @@ Use these values on each registry: owner `cbarange`, repository `isitai`, workfl
 
 1. Bump the version in `Cargo.toml` (`[workspace.package]`), `bindings/node/package.json` and `bindings/python/pyproject.toml` (PEP 440 form: `0.1.0-alpha.1` becomes `0.1.0a1`).
 2. Run `python3 scripts/check_versions.py`.
-3. Refresh the embedded C2PA trust list: run `scripts/update_trust_list.sh` (needs `gh`), read the list of added and removed certificates, then run `cargo test -p isitai`. The list is only read from the repository at build time; a release ships the snapshot it was built with.
+3. Refresh the two embedded C2PA trust lists (manifest signers and time-stamp authorities): run `scripts/update_trust_list.sh` (needs `gh`), read the added and removed certificates of each list, then run `cargo test -p isitai`. The lists are only read from the repository at build time; a release ships the snapshot it was built with.
 4. Commit, then tag and push:
    ```bash
    git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1

@@ -2,8 +2,9 @@
 .env
 .env.*
 *.pem
-# Public C2PA trust list, embedded in the core crate (not a secret)
+# Public C2PA trust lists, embedded in the core crate (not secrets)
 !crates/isitai-core/trust/C2PA-TRUST-LIST.pem
+!crates/isitai-core/trust/C2PA-TSA-TRUST-LIST.pem
 .npmrc*
 
 # Build outputs

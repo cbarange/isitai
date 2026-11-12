@@ -55,9 +55,9 @@ Options apply to the files that follow them. Exit code: `0` nothing found, `1` A
 
 ### Trust anchors
 
-`ai-proven` and `capture-proven` need a C2PA manifest whose signer chains to a trusted root. By default the trusted roots are the official [C2PA trust list](https://github.com/c2pa-org/conformance-public/tree/main/trust-list), embedded in the library. It is a snapshot (date and upstream commit in `crates/isitai-core/trust/SOURCE.md`): nothing is fetched at run time, and a newer list comes with a newer release.
+`ai-proven` and `capture-proven` need a C2PA manifest whose signer chains to a trusted root. By default the trusted roots are the two official [C2PA trust lists](https://github.com/c2pa-org/conformance-public/tree/main/trust-list), embedded in the library: one for manifest signers, one for time-stamp authorities. A time-stamp counts only when its authority chains to a trusted time-stamp root; it is what keeps a file proven after its signing certificate has expired. The lists are a snapshot (date and upstream commit in `crates/isitai-core/trust/SOURCE.md`): nothing is fetched at run time, and newer lists come with a newer release.
 
-A PEM bundle given with `--anchors`, `trustAnchorsPem` or `trust_anchors_pem` **replaces** the embedded list; it is not added to it. There is no option to trust nothing. A bundle without a usable certificate is an error: the CLI exits with code 2, Node throws an `Error`, Python raises `ValueError`. In Rust, call `isitai::validate_trust_anchors` once before checking files.
+A PEM bundle given with `--anchors`, `trustAnchorsPem` or `trust_anchors_pem` **replaces** both embedded lists; it is not added to them. The bundle is used for signers and for time-stamps, so it must also hold the roots of the time-stamp authorities to trust. There is no option to trust nothing. A bundle without a usable certificate is an error: the CLI exits with code 2, Node throws an `Error`, Python raises `ValueError`. In Rust, call `isitai::validate_trust_anchors` once before checking files.
 
 ### Effort
 
@@ -132,8 +132,11 @@ Text spans in `evidence[].location` are UTF-8 byte offsets; use `location.text` 
 - **Metadata can be stripped.** A screenshot, a re-upload to most platforms or a re-save removes C2PA and XMP. The result is then `no-signal`.
 - **A document that quotes an artifact is flagged.** A bug report or a guide that contains `:contentReference[oaicite:0]` gets `ai-signal`, like this README. The text rules cannot tell a quote from a paste.
 - **Unsigned metadata is a claim, not a proof.** Anyone can write or remove an XMP field or a PNG chunk.
-- **The default trust list does not cover every signed file.** Two cases give `ai-signal` at most, or `no-signal`, where a proof could be expected. First, a signer that is only in the older "interim" list used by contentcredentials.org (seen on Adobe Firefly and Photoshop files from 2025) is not in the official list. Second, the C2PA time-stamp authority list is not embedded yet, so a C2PA 2.x manifest whose proof depends on its time-stamp (for example once a signing certificate has expired) cannot be proven.
+- **The default trust lists do not cover every signed file.** A file signed under the older "interim" list used by contentcredentials.org (seen on Adobe Firefly and Photoshop files from 2025) is not trusted by default: its signer is not in the official list. It gives `ai-signal` at most, or `no-signal`, where a proof could be expected.
 - **Ingredients are not verified.** An AI source type found only in an ingredient manifest gives `ai-signal` at most, never `ai-proven`.
+- **A leaked signing key defeats any trust list.** Whoever holds the private key of a certificate that chains to a trusted root can sign anything. For old manifests (C2PA claim version 1) certificate expiry does not limit this, because the time-stamp authority is not checked there.
+- **With `--anchors` / `trust_anchors_pem`, every root in your bundle is trusted for signers and for time-stamps.**
+- **A capture declared only by an ingredient is not a proof.** A photo re-saved by a trusted tool (for example a Google Pixel photo processed by Google Photos) gives `no-signal`: ingredient manifests are not verified.
 - **Not read yet:** compressed PNG text chunks, UTF-16 or Latin-1 text, XMP sidecar files.
 - **Slow input:** an MP4 with about 100 000 empty boxes takes about 25 s (time spent in the C2PA parser). Set a timeout when you check untrusted uploads.
 
@@ -143,4 +146,4 @@ See `docs/qa/REPORT.md` for the test corpus and the open findings.
 
 MIT
 
-The embedded file `crates/isitai-core/trust/C2PA-TRUST-LIST.pem` is the "C2PA Trust List" by the Coalition for Content Provenance and Authenticity (C2PA), copied unmodified from [c2pa-org/conformance-public](https://github.com/c2pa-org/conformance-public) and licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+The embedded files `crates/isitai-core/trust/C2PA-TRUST-LIST.pem` and `crates/isitai-core/trust/C2PA-TSA-TRUST-LIST.pem` are the "C2PA Trust List" and the "C2PA TSA Trust List" by the Coalition for Content Provenance and Authenticity (C2PA), copied unmodified from [c2pa-org/conformance-public](https://github.com/c2pa-org/conformance-public) and licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).

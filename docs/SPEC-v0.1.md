@@ -67,7 +67,7 @@ Erreurs (code `2`) : option inconnue commençant par `--`, fichier illisible, do
 
 ### Ancres de confiance
 
-Par défaut, les ancres sont la liste de confiance officielle de la C2PA, embarquée dans le crate (`crates/isitai-core/trust/`, origine dans `SOURCE.md`) : aucune configuration, aucun appel réseau. Un PEM fourni (`--anchors`, `trustAnchorsPem`, `trust_anchors_pem`) **remplace** la liste embarquée, il ne s'y ajoute pas. Il n'existe pas d'option pour ne faire confiance à rien : un PEM vide est refusé.
+Par défaut, les ancres sont les deux listes de confiance officielles de la C2PA, embarquées dans le crate (`crates/isitai-core/trust/`, origine dans `SOURCE.md`) : la liste des signataires de manifestes et la liste des autorités d'horodatage (TSA). Aucune configuration, aucun appel réseau. Un PEM fourni (`--anchors`, `trustAnchorsPem`, `trust_anchors_pem`) **remplace** les deux listes embarquées, il ne s'y ajoute pas : il sert d'ancres pour les signataires et pour les horodatages, et doit donc contenir aussi les racines des autorités d'horodatage à reconnaître. Il n'existe pas d'option pour ne faire confiance à rien : un PEM vide est refusé.
 
 Un PEM d'ancres inutilisable est une erreur, jamais une perte silencieuse de la lecture C2PA. Le cœur expose `validate_trust_anchors(pem)` : le PEM doit contenir au moins un bloc `CERTIFICATE` et être accepté par `c2pa`. La CLI sort en code `2`, Node lève une `Error`, Python lève `ValueError`. Les fonctions `check*` du cœur restent sans échec.
 
@@ -131,7 +131,7 @@ Règles de verdict, appliquées dans l'ordre. Une preuve (`proof`) n'est pas ann
 - Manifeste invalide : avertissement « C2PA manifest is invalid: the file changed after signing, or the manifest is broken », pas de `generator`, pas de `history_summary` ; `history` reste listé.
 - Bornes face à un manifeste hostile : `history` garde au plus 64 actions (avertissement au-delà) ; les noms d'action, de type de source et de logiciel sont coupés à 128 caractères.
 - Dans `history`, un `digital_source_type` hérité est celui de la première action de l'ingrédient, et seulement celle-là.
-- **Piège** : n'importe qui peut auto-signer un manifeste. Il faut donc `verify_trust: true` et des trust anchors : la liste de confiance C2PA embarquée, ou le PEM de l'appelant, jamais les deux (`c2pa` additionne les listes qu'il reçoit). Une signature valide sur un certificat non fiable ne donne que `ai-signal`.
+- **Piège** : n'importe qui peut auto-signer un manifeste. Il faut donc `verify_trust: true` et des trust anchors : les listes de confiance C2PA embarquées (signataires et TSA), ou le PEM de l'appelant pour les deux rôles, jamais un mélange (`c2pa` additionne les listes qu'il reçoit). Pour un claim v2, l'horodatage ne compte que si son autorité remonte à une ancre de type `tsa` ; sinon le certificat de signature est jugé à la date du jour. Une signature valide sur un certificat non fiable ne donne que `ai-signal`.
 - **Piège** : `remote_manifest_fetch` vaut `true` par défaut. Il faut le forcer à `false` (et laisser `ocsp_fetch: false`), sinon la lib fait des appels réseau.
 
 ### Image, couche métadonnées
@@ -246,8 +246,13 @@ Crates : `c2pa` (sans `openssl` ni `default_http` : pas d'OpenSSL système, pas 
   - [x] PEM embarqué dans le crate (`crates/isitai-core/trust/`), avec sa date et son commit source (`SOURCE.md`) ; mise à jour par `scripts/update_trust_list.sh`.
   - [x] Utilisé par défaut ; `trust_anchors_pem` le remplace.
   - [ ] Ajouter un workflow planifié qui ouvre une PR quand la liste change.
-- [ ] **Liste TSA (`C2PA-TSA-TRUST-LIST.pem`) : nécessaire, pas encore embarquée.** Vérifié avec `c2pa-rs` 0.92.0 (2026-11-12) : pour un claim v2, l'horodatage ne compte que si son autorité remonte à une ancre de type `tsa` ; sinon le certificat de signature est jugé à la date du jour. Une photo Pixel réelle signée sous la liste officielle est `Valid` sans la liste TSA (signataire de confiance, mais `signingCredential.untrusted` sur un ingrédient dont l'horodatage n'est pas reconnu) et `Trusted` avec. À faire : embarquer la liste TSA et la passer dans `trust.anchors` avec `trust_kind: "tsa"`.
-- [ ] **Fichiers signés sous l'ancienne liste « interim »** (contentcredentials.org) : aucun de ses 26 certificats n'est dans la liste officielle. Firefly et Photoshop (2025) restent `Valid`, donc `ai-signal` au mieux. Décider s'il faut une seconde liste.
+- [x] **Liste TSA (`C2PA-TSA-TRUST-LIST.pem`) embarquée.** Vérifié avec `c2pa-rs` 0.92.0 (2026-11-12) : pour un claim v2, l'horodatage ne compte que si son autorité remonte à une ancre de type `tsa` ; sinon le certificat de signature est jugé à la date du jour.
+  - [x] PEM embarqué à côté de la liste des signataires, même origine et même script de mise à jour ; passé à `c2pa` dans `trust.anchors` avec `trust_kind: "tsa"`.
+  - [x] `trust_anchors_pem` remplace les deux listes : le PEM de l'appelant sert d'ancres `manifest` et `tsa`.
+  - [x] Une photo Pixel réelle signée sous la liste officielle (`PXL_20260208_202351558.jpg`) est `Trusted` sans option ; elle était `Valid` sans la liste TSA.
+  - [ ] Cette photo reste `no-signal` : son type `computationalCapture` est déclaré par le manifeste d'un ingrédient (Pixel Camera), pas par le manifeste actif (Google Media Processing Services), et un type hérité est plafonné à `strong`. Décider si un ingrédient dont `c2pa` valide la confiance peut porter une preuve.
+  - [x] L'avertissement d'un manifeste `Valid` dit ce que `c2pa` a établi (signataire hors liste, horodatage non reconnu, signataire d'un ingrédient non reconnu), sinon « valid but not fully trusted ».
+- [ ] **Fichiers signés sous l'ancienne liste « interim »** (contentcredentials.org) : aucun de ses 26 certificats n'est dans la liste officielle. Firefly et Photoshop (2025) restent `Valid`, donc `ai-signal` au mieux : ces fichiers ne sont pas de confiance par défaut. Décider s'il faut une seconde liste.
 - [ ] Corpus réel : au moins un fichier par générateur (ChatGPT, Firefly, Gemini, Midjourney) et des photos d'appareils signées.
 - [ ] Mesurer l'addon Node en profil `size` (9,4 Mo en `release`, limite de 10 Mo).
 - [ ] Valider en CI le build `wasm32-wasip1-threads`.

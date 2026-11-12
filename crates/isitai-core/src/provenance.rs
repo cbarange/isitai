@@ -12,17 +12,32 @@ pub struct Provenance {
     pub history_summary: Option<HistorySummary>,
 }
 
-/// Official C2PA trust list, used when the caller gives no anchors. Vendored, never
-/// fetched: see `trust/SOURCE.md` for its origin and `scripts/update_trust_list.sh`.
+/// Official C2PA trust lists, used when the caller gives no anchors: the roots of
+/// manifest signers and the roots of time-stamp authorities. Vendored, never fetched:
+/// see `trust/SOURCE.md` for their origin and `scripts/update_trust_list.sh`.
 const C2PA_TRUST_LIST: &str = include_str!("../trust/C2PA-TRUST-LIST.pem");
+const C2PA_TSA_TRUST_LIST: &str = include_str!("../trust/C2PA-TSA-TRUST-LIST.pem");
 
-/// C2PA settings shared by [`read`] and [`validate_trust_anchors`]: no network,
-/// trust checked against `anchors_pem` when given, else against [`C2PA_TRUST_LIST`].
-/// One bundle is passed, never both: c2pa adds every bundle it is given to its anchors.
+/// C2PA settings shared by [`read`] and [`validate_trust_anchors`]: no network, trust
+/// checked against `anchors_pem` when given, else against the embedded lists.
+/// c2pa keeps two sets of roots: `manifest` for signers and `tsa` for time-stamps. A
+/// time-stamp whose authority is not under a `tsa` root is ignored, and the signing
+/// certificate is then judged at today's date. The caller's bundle fills both sets and
+/// the embedded lists are left out: c2pa adds every bundle it is given to its anchors.
 fn context(anchors_pem: Option<&str>) -> Result<Context, String> {
+    let (signers, time_stamps) = match anchors_pem {
+        Some(pem) => (pem, pem),
+        None => (C2PA_TRUST_LIST, C2PA_TSA_TRUST_LIST),
+    };
+    // The signer bundle goes through `trust_anchors`, which c2pa turns into a
+    // `manifest` entry of `anchors`: it is the only key c2pa refuses when no
+    // certificate can be loaded. An entry of `anchors` is taken unchecked.
     let settings = json!({
         "verify": { "remote_manifest_fetch": false, "ocsp_fetch": false, "verify_trust": true },
-        "trust": { "trust_anchors": anchors_pem.unwrap_or(C2PA_TRUST_LIST) }
+        "trust": {
+            "trust_anchors": signers,
+            "anchors": [{ "trust_anchors": time_stamps, "trust_kind": "tsa" }]
+        }
     });
     Context::new()
         .with_settings(settings.to_string().as_str())
@@ -79,9 +94,7 @@ fn interpret(store: &Value, state: ValidationState, dst_rules: &Dst) -> Option<P
     let mut warnings = Vec::new();
     match state {
         ValidationState::Trusted => {}
-        ValidationState::Valid => {
-            warnings.push("C2PA manifest is valid but its signer is not in the trust list".into())
-        }
+        ValidationState::Valid => warnings.push(not_trusted(&store["validation_results"]).into()),
         ValidationState::Invalid => warnings.push(
             "C2PA manifest is invalid: the file changed after signing, or the manifest is broken"
                 .into(),
@@ -104,6 +117,35 @@ fn interpret(store: &Value, state: ValidationState, dst_rules: &Dst) -> Option<P
         history_summary: valid.then(|| summarize(&history, dst_rules)).flatten(),
         history,
     })
+}
+
+/// Why c2pa finds a valid manifest not trusted, from its validation results (the
+/// `validation_results` of the store). Says only what the status codes establish.
+fn not_trusted(results: &Value) -> &'static str {
+    const UNTRUSTED: &str = "signingCredential.untrusted";
+    let has = |statuses: &Value, code: &str| {
+        let mut list = statuses.as_array().into_iter().flatten();
+        list.any(|status| status["code"] == code)
+    };
+    let active = &results["activeManifest"];
+    if has(&active["failure"], UNTRUSTED) {
+        // c2pa also reports a listed signer as untrusted when it ignores the time-stamp.
+        return if has(&active["informational"], "timeStamp.untrusted") {
+            "C2PA manifest is valid but its signer and its time-stamp are not trusted"
+        } else {
+            "C2PA manifest is valid but its signer is not in the trust list"
+        };
+    }
+    let ingredient_untrusted = results["ingredientDeltas"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|delta| has(&delta["validationDeltas"]["failure"], UNTRUSTED));
+    if has(&active["success"], "signingCredential.trusted") && ingredient_untrusted {
+        "C2PA manifest is valid and its signer is trusted, but the signer of an ingredient is not trusted"
+    } else {
+        "C2PA manifest is valid but not fully trusted"
+    }
 }
 
 /// Name of the tool that wrote the manifest.
@@ -716,10 +758,11 @@ mod tests {
         assert!(trusted.warnings.is_empty());
         assert_eq!(trusted.generator.as_deref(), Some("Photo Editor"));
 
+        // No validation results: the reason is not established.
         let valid = read_store(&s, Valid);
         assert_eq!(
             valid.warnings,
-            ["C2PA manifest is valid but its signer is not in the trust list"]
+            ["C2PA manifest is valid but not fully trusted"]
         );
         assert_eq!(valid.generator.as_deref(), Some("Photo Editor"));
         assert_eq!(valid.history_summary, Some(HistorySummary::AiThenEdited));
@@ -733,6 +776,59 @@ mod tests {
         assert_eq!(invalid.history_summary, None);
         assert_eq!(invalid.history, trusted.history);
         assert_eq!(invalid.history.len(), 2);
+    }
+
+    /// Shapes copied from `c2pa::Reader::json()` on real files (Firefly, Google Pixel).
+    #[test]
+    fn valid_manifest_warning_says_what_c2pa_established() {
+        let untrusted = json!([{ "code": "signingCredential.untrusted", "explanation": "signing certificate untrusted" }]);
+        let trusted = json!([{ "code": "claimSignature.validated" }, { "code": "signingCredential.trusted" }]);
+        let time_stamp = json!([{ "code": "timeStamp.untrusted" }]);
+        let ingredient = |failure: &Value| {
+            json!([
+                { "ingredientAssertionURI": "self#jumbf=a", "validationDeltas": { "success": [], "informational": [], "failure": [] } },
+                { "ingredientAssertionURI": "self#jumbf=b", "validationDeltas": { "success": [], "informational": time_stamp, "failure": failure } }
+            ])
+        };
+        let warning = |results: Value| {
+            let mut s = opened_from("generator", json!([]));
+            s["validation_results"] = results;
+            read_store(&s, Valid).warnings.join("|")
+        };
+        assert_eq!(
+            warning(
+                json!({ "activeManifest": { "success": [], "informational": [], "failure": untrusted } })
+            ),
+            "C2PA manifest is valid but its signer is not in the trust list"
+        );
+        assert_eq!(
+            warning(
+                json!({ "activeManifest": { "success": [], "informational": time_stamp, "failure": untrusted } })
+            ),
+            "C2PA manifest is valid but its signer and its time-stamp are not trusted"
+        );
+        // The signer is trusted: the warning must not say otherwise.
+        assert_eq!(
+            warning(json!({
+                "activeManifest": { "success": trusted, "informational": time_stamp, "failure": [] },
+                "ingredientDeltas": ingredient(&untrusted)
+            })),
+            "C2PA manifest is valid and its signer is trusted, but the signer of an ingredient is not trusted"
+        );
+        // Another failure code, or nothing to read: no guess.
+        let other = json!([{ "code": "cawg.identity.sig_mismatch" }]);
+        for results in [
+            json!({ "activeManifest": { "success": trusted, "informational": [], "failure": other } }),
+            json!({ "activeManifest": { "success": trusted, "informational": [], "failure": [] }, "ingredientDeltas": ingredient(&other) }),
+            json!({ "activeManifest": { "success": [], "informational": [], "failure": [] }, "ingredientDeltas": ingredient(&untrusted) }),
+            json!({}),
+            json!("broken"),
+        ] {
+            assert_eq!(
+                warning(results),
+                "C2PA manifest is valid but not fully trusted"
+            );
+        }
     }
 
     #[test]
@@ -799,23 +895,60 @@ zGxQnM2hCA==
 ";
 
     #[test]
-    fn embedded_trust_list_is_usable() {
-        assert_eq!(validate_trust_anchors(C2PA_TRUST_LIST), Ok(()));
+    fn embedded_trust_lists_are_usable() {
         assert!(context(None).is_ok());
-        // A truncated copy would still load: the list must not be near empty.
-        let blocks = C2PA_TRUST_LIST.matches("-----BEGIN CERTIFICATE-----");
-        assert!(blocks.count() >= 10);
+        // A truncated copy would still load: a list must not be near empty.
+        for list in [C2PA_TRUST_LIST, C2PA_TSA_TRUST_LIST] {
+            assert_eq!(validate_trust_anchors(list), Ok(()));
+            assert!(list.matches("-----BEGIN CERTIFICATE-----").count() >= 10);
+        }
+    }
+
+    /// (kind, bundle) of every anchor entry c2pa holds, sorted: c2pa keeps no order.
+    fn bundles(anchors_pem: Option<&str>) -> Vec<(String, String)> {
+        let ctx = context(anchors_pem).unwrap();
+        let anchors = ctx.settings().trust.anchors.clone().unwrap_or_default();
+        let mut out: Vec<_> = anchors
+            .into_iter()
+            .map(|a| (format!("{:?}", a.trust_kind), a.trust_anchors))
+            .collect();
+        out.sort();
+        out
+    }
+
+    fn pair(kind: &str, bundle: &str) -> (String, String) {
+        (kind.to_string(), bundle.to_string())
     }
 
     #[test]
-    fn given_anchors_replace_the_embedded_list() {
-        let bundles = |anchors_pem| -> Vec<String> {
+    fn default_anchors_are_the_two_embedded_lists() {
+        assert_eq!(
+            bundles(None),
+            [
+                pair("Manifest", C2PA_TRUST_LIST),
+                pair("TSA", C2PA_TSA_TRUST_LIST)
+            ]
+        );
+    }
+
+    #[test]
+    fn given_anchors_replace_both_embedded_lists() {
+        assert_eq!(
+            bundles(Some(TEST_ROOT)),
+            [pair("Manifest", TEST_ROOT), pair("TSA", TEST_ROOT)]
+        );
+    }
+
+    #[test]
+    fn verification_is_never_weakened() {
+        for anchors_pem in [None, Some(TEST_ROOT)] {
             let ctx = context(anchors_pem).unwrap();
-            let anchors = ctx.settings().trust.anchors.clone().unwrap_or_default();
-            anchors.into_iter().map(|a| a.trust_anchors).collect()
-        };
-        assert_eq!(bundles(None), [C2PA_TRUST_LIST]);
-        assert_eq!(bundles(Some(TEST_ROOT)), [TEST_ROOT]);
+            let verify = serde_json::to_value(&ctx.settings().verify).unwrap();
+            assert_eq!(verify["verify_trust"], true);
+            assert_eq!(verify["verify_timestamp_trust"], true);
+            assert_eq!(verify["remote_manifest_fetch"], false);
+            assert_eq!(verify["ocsp_fetch"], false);
+        }
     }
 
     #[test]
