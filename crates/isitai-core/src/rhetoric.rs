@@ -243,16 +243,12 @@ mod tests {
 
     #[test]
     fn a_four_item_list_is_not_a_triptych() {
-        assert!(
-            rhetoric("Il analyse, trie, traite et livre.").is_empty()
-        );
+        assert!(rhetoric("Il analyse, trie, traite et livre.").is_empty());
     }
 
     #[test]
     fn plain_human_text_produces_nothing() {
-        assert!(
-            rhetoric("Bonjour, je rentre demain soir. On se voit samedi ?").is_empty()
-        );
+        assert!(rhetoric("Bonjour, je rentre demain soir. On se voit samedi ?").is_empty());
     }
 
     /// The invariant this layer exists to keep: whatever it finds, the verdict is the
