@@ -1,0 +1,94 @@
+name: Demo
+
+# Le dépôt de démonstration contient le module WASM déjà compilé : rien ne le reconstruit
+# ailleurs. Sans ce workflow, la démo dérive du code sans que personne ne le voie.
+# Voir docs/DEMO.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "bindings/wasm/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: demo
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Doit égaler la version exigée par bindings/wasm/Cargo.toml.
+  WASM_BINDGEN_VERSION: "0.2.130"
+
+jobs:
+  publish:
+    name: Reconstruire et publier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      # Binaire officiel, pas `cargo install` : la version doit être exacte, et un module
+      # construit par une autre version de wasm-bindgen ne se charge pas dans la page.
+      - name: wasm-bindgen ${{ env.WASM_BINDGEN_VERSION }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/rustwasm/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL "$url" | tar -xz --strip-components=1 -C "$RUNNER_TEMP" \
+            "wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/wasm-bindgen" --version
+
+      - name: Construire le module
+        run: ./site/build.sh
+
+      - name: Publier dans le dépôt de démonstration
+        env:
+          DEMO_TOKEN: ${{ secrets.DEMO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEMO_TOKEN:-}" ]; then
+            {
+              echo "### Démo non publiée"
+              echo
+              echo "Le secret \`DEMO_TOKEN\` n'est pas défini. Le module a été construit et testé,"
+              echo "mais ne peut pas être poussé vers \`cbarange/isitai.cbarange.com\`."
+              echo "Voir docs/DEMO.md pour la portée exacte de ce jeton."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::DEMO_TOKEN absent — publication ignorée, voir docs/DEMO.md"
+            exit 0
+          fi
+
+          git clone --depth 1 "https://x-access-token:${DEMO_TOKEN}@github.com/cbarange/isitai.cbarange.com.git" "$RUNNER_TEMP/demo"
+          cd "$RUNNER_TEMP/demo"
+          cp "$GITHUB_WORKSPACE"/site/{index.html,app.js,engine.js,strings.js,style.css} .
+          rm -rf pkg && cp -r "$GITHUB_WORKSPACE/site/pkg" pkg
+
+          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
+            echo "::notice::démo déjà à jour, aucun commit créé"
+            exit 0
+          fi
+
+          git config user.name "isitai bot"
+          git config user.email "cbarange@users.noreply.github.com"
+          git add -A
+          git commit -m "Update the demo to isitai ${GITHUB_SHA::7}"
+          git push
+          echo "démo publiée pour ${GITHUB_SHA::7}" >> "$GITHUB_STEP_SUMMARY"
