@@ -1,0 +1,7 @@
+Contexto: La resistencia antibiótica en bacterias Gram negativas representa una creciente amenaza para la salud pública mundial.
+
+Método: Se evaluaron aislados clínicos mediante pruebas de susceptibilidad antimicrobiana y secuenciación genómica.
+
+Resultados: Se detectaron betalactamasas de espectro extendido y carbapenemasas en el 45% de las muestras analizadas.
+
+Conclusión: Estos mecanismos confieren multirresist

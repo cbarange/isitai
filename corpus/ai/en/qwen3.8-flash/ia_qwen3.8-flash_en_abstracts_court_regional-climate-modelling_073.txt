@@ -1,0 +1,4 @@
+Background: Regional climate projections require dynamically downscaled simulations to capture local variability.
+Methods: A regional climate model was coupled to ERA5 reanalysis and validated over 1990-2020 in Europe.
+Results: Mean temperature biases stayed below 1°C, while precipitation errors remained under 15%.
+Conclusion: This approach reduces uncertainty for regional climate services.

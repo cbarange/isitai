@@ -1,0 +1,7 @@
+Subject: Reminder: Outstanding Invoice [Invoice Number]
+
+Dear [Recipient's Name],
+
+I hope you are well. I am writing to follow up on invoice [Invoice Number], dated [Invoice Date], for the amount of [Amount], which remains unpaid. According to our records, payment was due on [Due Date].
+
+Could you please provide an update on the payment status or let me know if you require any further information?

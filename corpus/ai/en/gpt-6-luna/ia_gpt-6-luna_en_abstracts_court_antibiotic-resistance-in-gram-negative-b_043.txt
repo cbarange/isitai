@@ -1,0 +1,4 @@
+Contexte : Les bactéries à Gram négatif résistantes aux antibiotiques représentent une menace croissante pour la santé publique.  
+Méthodes : Cette synthèse examine les principaux mécanismes de résistance et leurs conséquences cliniques.  
+Résultats : La production de bêta-lactamases à spectre étendu ou de carbapénémases, la modification des porines et l’efflux réduisent les options thérapeutiques; les gènes mobiles favorisent leur dissémination.  
+Conclusion : Une surveillance renforcée, un usage prudent des antibiotiques et la prévention des infections sont essentiels.

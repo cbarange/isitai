@@ -1,0 +1,15 @@
+Salut à tous,
+
+Je viens de vivre la semaine de ma vie et j'ai besoin de vider mon sac.
+
+Contexte : mon manager, Marc, est à la tête de notre équipe tech depuis six mois. Avant ça, il était commercial. Rien que ça, mais bon, changer de voie c'est respectable.
+
+Le truc qui m'a achevé : hier, il nous a demandé de livrer le nouveau module en React en une semaine, alors que le dev nous avait clairement dit que c'était trois semaines minimum. Quand je lui ai expliqué que c'était impossible, il m'a répondu : "Je ne vois pas pourquoi ça prend autant de temps. Le temps c'est de l'argent, non ?" Il a mis l'accent sur "temps" comme s'il venait de découvrir le mot.
+
+Résultat : toute l'équipe est en train de faire des heures sup' non payées, le QA pleure dans les toilettes, et moi je commence à regarder les offres d'emploi sur Indeed en plein open space.
+
+Ma question : comment vous gérez un manager qui ne comprend rien à votre métier mais qui quand même vous donne des ordres ? Vous tentez de lui expliquer patiemment, vous escaladez vers son propre boss, ou vous encaissez en attendant que ça passe ?
+
+Parce que là, je suis à deux doigts de lui imprimer un tas de tuto React et de les poser sur son bureau sans un mot.
+
+Racontez-moi vos pires histoires de managers schtroumpfs, j'ai besoin de rire ou de pleurer, je sais pas encore.

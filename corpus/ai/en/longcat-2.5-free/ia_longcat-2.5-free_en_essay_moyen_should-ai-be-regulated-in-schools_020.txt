@@ -1,0 +1,9 @@
+**Should AI Be Regulated in Schools?**
+
+Artificial intelligence is rapidly transforming education, and its presence in classrooms raises an urgent question: should schools regulate its use? While some argue that AI should be embraced freely, this essay argues that clear regulation is necessary to protect students and preserve the quality of learning.
+
+First, without rules, AI encourages academic dishonesty. Students can easily generate essays or solve homework with tools like ChatGPT, which undermines the very purpose of education: developing critical thinking and personal effort. Second, AI produces unreliable information. Students may accept false or biased content as truth, making guidance essential. Third, there are serious privacy concerns: AI applications often collect personal data from minors without adequate protection.
+
+However, regulation should not mean prohibition. AI can be a powerful educational ally, offering personalised tutoring, helping students with disabilities, and freeing teachers from repetitive tasks. The goal should therefore be sensible regulation: teaching students how to use AI responsibly, defining acceptable uses for assignments, and ensuring transparency about data protection.
+
+In conclusion, AI must be regulated in schools, not to resist progress, but to harness it safely. With clear rules and proper guidance, students can benefit from AI while learning the values of integrity, critical thinking, and responsibility that education exists to teach.

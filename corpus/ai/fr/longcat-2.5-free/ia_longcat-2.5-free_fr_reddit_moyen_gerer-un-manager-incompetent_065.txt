@@ -1,0 +1,9 @@
+Salut à tous,
+
+Petite anecdote qui m'a saoûlé la semaine dernière et j'ai besoin de vos retours.
+
+Mon manager nous a annoncé lundi qu'il fallait "repenser complètement" notre façon de bosser sur le projet en cours, trois semaines avant la livraison. Sauf que le mec n'a visiblement jamais ouvert un Jira de sa vie, il confond sprint et météo, et sa grande idée c'est de nous imposer des daily meetings à 8h30 alors que personne dans l'équipe n'est du matin.
+
+Le pire, c'est quand j'ai tenté de lui expliquer que son "plan" allait juste doubler notre charge de travail sans rien résoudre : il m'a regardé avec un grand sourire et m'a dit "faut que tu sois plus proactif". Proactif. J'ai failli m'étrangler sur mon café.
+
+Du coup ma question : vous avez déjà réussi à gérer ce genre de manager ? Genre sans le descendre publiquement (j'ai pas envie d'être viré non plus) ? Parce que j'ai testé la diplomatie, le "oui oui bien sûr" suivi de silence radio, et là j'avoue

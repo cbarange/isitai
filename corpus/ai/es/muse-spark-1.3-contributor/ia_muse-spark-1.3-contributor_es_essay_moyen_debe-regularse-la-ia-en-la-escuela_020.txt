@@ -1,0 +1,8 @@
+Introducción
+La inteligencia artificial ha irrumpido en la escuela y ha transformado la forma de enseñar y aprender. Desde los asistentes de redacción hasta los tutores personalizados, su presencia es inevitable. Por ello, se plantea si debe regularse su uso en el ámbito educativo.
+
+Desarrollo
+Regular la IA no significa prohibirla, sino establecer un marco ético y pedagógico. En primer lugar, existe el riesgo de plagio y pérdida del pensamiento crítico si el alumnado delega todas las tareas en estas herramientas. En segundo lugar, la protección de datos es fundamental, pues los menores comparten información sensible en plataformas cuyos fines no siempre son transparentes. En tercer lugar, la brecha digital puede aumentar la desigualdad entre centros con recursos y aquellos sin acceso a estas tecnologías. Sin embargo, una regulación adecuada permitiría aprovechar sus beneficios: personalización del aprendizaje, apoyo al docente en la corrección y atención a la diversidad. Para ello, es necesario formar al profesorado, educar en el uso responsable y definir qué usos son aceptables en cada nivel.
+
+Conclusión
+En definitiva, la escuela no puede ignorar la IA, pero tampoco adoptarla sin criterios. Una regulación clara, flexible y centrada en la formación humana garantizará que la tecnología sea una aliada y no un sustituto del aprendizaje.
