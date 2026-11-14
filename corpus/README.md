@@ -1,6 +1,6 @@
 # Corpus de textes générés
 
-948 textes produits par des modèles de plusieurs éditeurs, dans sept langues
+600 textes produits par des modèles de plusieurs éditeurs, dans sept langues
 et dix domaines. Ce corpus sert de matériau **positif** : il ne contient que du
 texte machine, et ne permet donc à lui seul aucun calcul de faux positifs.
 
@@ -15,77 +15,77 @@ sans sa consigne n'est pas reproductible.
 
 | Langue | Textes | Part |
 |---|---|---|
-| en | 232 | 24.5 % |
-| fr | 167 | 17.6 % |
-| es | 145 | 15.3 % |
-| pt | 131 | 13.8 % |
-| zh | 121 | 12.8 % |
-| ar | 92 | 9.7 % |
-| it | 60 | 6.3 % |
+| en | 150 | 25.0 % |
+| fr | 120 | 20.0 % |
+| es | 105 | 17.5 % |
+| pt | 83 | 13.8 % |
+| zh | 60 | 10.0 % |
+| ar | 45 | 7.5 % |
+| it | 37 | 6.2 % |
 
 ## Éditeurs
 
 | Éditeur | Textes |
 |---|---|
-| Zhipu AI | 146 |
-| DeepSeek | 126 |
-| Anthropic | 99 |
-| Meituan | 91 |
-| Alibaba | 75 |
-| Iceman | 68 |
-| Xiaomi | 68 |
-| Muse | 59 |
-| MiniMax | 50 |
-| Google | 45 |
-| OpenAI | 43 |
-| Moonshot | 33 |
-| xAI | 20 |
-| StepFun | 18 |
-| Tencent | 7 |
+| Zhipu AI | 83 |
+| DeepSeek | 71 |
+| Meituan | 64 |
+| Anthropic | 49 |
+| Xiaomi | 46 |
+| Iceman | 42 |
+| Muse | 42 |
+| Alibaba | 42 |
+| Google | 32 |
+| OpenAI | 32 |
+| MiniMax | 31 |
+| Moonshot | 28 |
+| xAI | 18 |
+| StepFun | 14 |
+| Tencent | 6 |
 
 ## Modèles
 
 | Modèle | Textes |
 |---|---|
-| `deepseek-v4.1-flash` | 105 |
-| `claude-haiku-5-5` | 99 |
-| `glm-5.3-flash` | 96 |
-| `iceman-contributor-free` | 68 |
-| `muse-spark-1.3-contributor` | 59 |
-| `qwen3.8-flash` | 52 |
-| `longcat-2.0` | 50 |
-| `mimo-v2.6-flash` | 47 |
-| `minimax-m3.1-flash` | 46 |
-| `gemini-4-argon` | 45 |
-| `longcat-2.5-free` | 41 |
-| `glm-5.2` | 35 |
-| `gpt-5.6-luna` | 23 |
-| `qwen3.8-max` | 23 |
-| `deepseek-v4-pro` | 21 |
-| `mimo-v2.6-pro` | 21 |
-| `gpt-6-luna` | 20 |
-| `grok-4.7` | 20 |
-| `kimi-k3` | 19 |
-| `step-5-preview` | 18 |
-| `glm-5.3` | 15 |
-| `kimi-k3.1-pro` | 14 |
-| `hy4` | 7 |
-| `minimax-m3` | 4 |
+| `deepseek-v4.1-flash` | 53 |
+| `claude-haiku-5-5` | 49 |
+| `glm-5.3-flash` | 47 |
+| `iceman-contributor-free` | 42 |
+| `muse-spark-1.3-contributor` | 42 |
+| `gemini-4-argon` | 32 |
+| `longcat-2.0` | 32 |
+| `longcat-2.5-free` | 32 |
+| `qwen3.8-flash` | 29 |
+| `mimo-v2.6-flash` | 29 |
+| `minimax-m3.1-flash` | 29 |
+| `glm-5.2` | 25 |
+| `deepseek-v4-pro` | 18 |
+| `gpt-5.6-luna` | 18 |
+| `grok-4.7` | 18 |
+| `mimo-v2.6-pro` | 17 |
+| `kimi-k3` | 16 |
+| `gpt-6-luna` | 14 |
+| `step-5-preview` | 14 |
+| `qwen3.8-max` | 13 |
+| `kimi-k3.1-pro` | 12 |
+| `glm-5.3` | 11 |
+| `hy4` | 6 |
+| `minimax-m3` | 2 |
 
 ## Domaines
 
 | Domaine | Textes |
 |---|---|
-| reviews | 101 |
-| news | 100 |
-| reddit | 98 |
-| social | 97 |
-| essay | 95 |
-| recipes | 94 |
-| books | 93 |
-| email | 93 |
-| wiki | 91 |
-| abstracts | 86 |
+| email | 76 |
+| essay | 76 |
+| books | 74 |
+| news | 74 |
+| abstracts | 73 |
+| recipes | 66 |
+| reddit | 56 |
+| reviews | 46 |
+| social | 37 |
+| wiki | 22 |
 
 ## Longueurs
 
@@ -93,9 +93,9 @@ Comptées en caractères pour le chinois, mots ailleurs.
 
 | Longueur | Textes | Bornes |
 |---|---|---|
-| moyen | 326 | 150-300 |
-| court | 322 | 30-80 |
-| long | 300 | 500-900 |
+| court | 256 | 30-80 |
+| long | 184 | 500-900 |
+| moyen | 160 | 150-300 |
 
 ## Couverture des sujets
 
@@ -103,13 +103,15 @@ Nombre de sujets distincts par couple (langue, domaine) :
 
 | Sujets distincts | Couples concernés |
 |---|---|
-| 10 | 26 |
-| 9 | 7 |
-| 8 | 7 |
-| 6 | 9 |
-| 5 | 6 |
-| 4 | 12 |
-| 3 | 3 |
+| 9 | 11 |
+| 8 | 13 |
+| 7 | 11 |
+| 6 | 1 |
+| 5 | 8 |
+| 4 | 8 |
+| 3 | 2 |
+| 2 | 1 |
+| 1 | 1 |
 
 Les langues à petit volume ne peuvent pas couvrir dix sujets par domaine :
 37 textes italiens pour dix domaines donnent mécaniquement trois à quatre sujets.
@@ -123,7 +125,7 @@ avant de comparer des taux entre langues.
   équilibré, il suit une pondération par coût mesuré.
 - Aucune généralisation à un domaine absent de la liste.
 
-Coût total de production : 8.0988 allowance.
+Coût total de production : 5.9907 allowance.
 
 ## Échecs de génération
 
