@@ -426,7 +426,9 @@ def plan_for(lang: str, models: list[str]) -> list[dict]:
     """
     total = TARGETS[lang]
     very_long_budget = max(1, int(total * 0.10))
-    distinct = sorted(set(models), key=weight_of, reverse=True)
+    # Ordre total et stable : `set` n'a pas d'ordre garanti d'un processus à l'autre, donc
+    # le plan changeait à chaque relance et le corpus grossissait de textes non prévus.
+    distinct = sorted(set(models), key=lambda m: (-weight_of(m), m))
     # Un balayage complet des modèles par domaine : le domaine change tous les
     # `len(distinct)` textes, donc chaque domaine voit passer tous les modèles.
     slots = [m for m in distinct for _ in range(weight_of(m))]
