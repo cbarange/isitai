@@ -144,6 +144,28 @@ def write_readme(rows, per_lang, per_model, per_domain, per_length,
     for domain, n in per_domain.most_common():
         lines.append(f"| {domain} | {n} |")
 
+    reassigned = [r for r in rows if "langue_demandee" in r]
+    if reassigned:
+        by_pair = collections.Counter((r["langue_demandee"], r["langue"]) for r in reassigned)
+        lines += [
+            "",
+            "## Textes réaffectés",
+            "",
+            "Des textes produits dans un emplacement d'une langue ont été écrits dans une",
+            "autre : le gabarit du prompt était rédigé en français pour toutes les langues,",
+            "et il tirait la sortie vers le français. Ces textes sont conservés, reclassés",
+            "dans leur vraie langue, et leur nom porte le suffixe `_reassignee`. Le champ",
+            "`langue_demandee` du manifeste garde la langue qui avait été demandée.",
+            "",
+            "| Demandée | Réelle | Textes |",
+            "|---|---|---|",
+        ]
+        for (asked, real), n in by_pair.most_common():
+            lines.append(f"| {asked} | {real} | {n} |")
+        lines += ["", "Les emplacements libérés ont été régénérés dans la langue demandée :", 
+                  "le total dépasse donc le nombre d'emplacements prévus."]
+
+
     lines += ["", "## Longueurs", "",
               f"Comptées en {unit}.", "", "| Longueur | Textes | Bornes |", "|---|---|---|"]
     bounds = {"court": "30-80", "moyen": "150-300", "long": "500-900", "tres-long": "1500-3000"}

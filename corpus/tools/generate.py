@@ -291,11 +291,19 @@ SUBJECTS_TRANSLATED = {
     },
 }
 
-WORD_TARGET = {"court": "30 à 80 mots", "moyen": "150 à 300 mots",
-               "long": "500 à 900 mots", "tres-long": "1500 à 3000 mots"}
-# Le chinois ne sépare pas les mots : la longueur se compte en caractères.
-WORD_TARGET_ZH = {"court": "30 至 80 字", "moyen": "150 至 300 字",
-                  "long": "500 至 900 字", "tres-long": "1500 至 3000 字"}
+# La longueur annoncée au modèle suit la langue : « 30 à 80 mots » glissé dans un prompt
+# anglais ou arabe est une consigne française de plus, et elle tire la sortie vers le
+# français. Dérivée de LENGTHS, donc jamais désynchronisée des bornes réelles.
+UNIT_WORD = {"fr": "mots", "en": "words", "es": "palabras", "pt": "palavras",
+             "it": "parole", "ar": "كلمة"}
+LINK_WORD = {"fr": "à", "en": "to", "es": "a", "pt": "a", "it": "a", "ar": "إلى"}
+
+
+def word_target(lang: str, length: str) -> str:
+    lo, hi = LENGTHS[length]
+    if lang == "zh":
+        return f"{lo} 至 {hi} 字"
+    return f"{lo} {LINK_WORD[lang]} {hi} {UNIT_WORD[lang]}"
 
 # Rappel de longueur quand le modèle s'arrête trop tôt. Dans la langue cible : une
 # consigne française glissée dans un prompt arabe fait basculer la langue de sortie.
@@ -449,10 +457,25 @@ def count_units(text: str, lang: str) -> int:
     return len(text.split())
 
 
+# Le gabarit doit être dans la langue cible. Rédigé en français pour toutes les langues,
+# il tirait la sortie vers le français : 96 textes annoncés anglais, espagnol, portugais,
+# italien, chinois ou arabe étaient en réalité écrits en français.
+PROMPT_WRAPPER = {
+    "fr": "Sujet : {sujet}.\nLongueur : {longueur}. Écris uniquement le texte demandé.",
+    "en": "Subject: {sujet}.\nLength: {longueur}. Write only the requested text.",
+    "es": "Tema: {sujet}.\nLongitud: {longueur}. Escribe únicamente el texto solicitado.",
+    "pt": "Tema: {sujet}.\nComprimento: {longueur}. Escreve apenas o texto pedido.",
+    "it": "Tema: {sujet}.\nLunghezza: {longueur}. Scrivi soltanto il testo richiesto.",
+    "zh": "主题：{sujet}。\n长度：{longueur}。只写要求的文本。",
+    "ar": "الموضوع: {sujet}.\nالطول: {longueur}. اكتب النص المطلوب فقط.",
+}
+
+
 def prompt_for(row: dict) -> str:
     style = STYLE[row["langue"]][row["domaine"]]
-    words = (WORD_TARGET_ZH if row["langue"] == "zh" else WORD_TARGET)[row["longueur_cible"]]
-    return f"{style}\n\nSujet : {row['sujet']}.\nLongueur : {words}. Écris uniquement le texte demandé."
+    words = word_target(row["langue"], row["longueur_cible"])
+    wrapper = PROMPT_WRAPPER[row["langue"]].format(sujet=row["sujet"], longueur=words)
+    return f"{style}\n\n{wrapper}"
 
 
 def generate(token: str, row: dict, temperature: float) -> tuple[str, dict]:
