@@ -88,3 +88,34 @@
 {"id": "ia_hy4_en_abstracts_moyen_reading-acquisition-in-children_083", "modele_id": "hy4", "raison": "sortie vide après deux tentatives", "date": "2026-11-13T21:44:14"}
 {"id": "ia_minimax-m3_en_reviews_long_a-food-delivery-service_084", "modele_id": "minimax-m3", "raison": "hors longueur : 321 unités pour 500-900", "date": "2026-11-13T21:45:16"}
 {"id": "ia_glm-5.3_en_essay_long_should-voting-be-compulsory_090", "modele_id": "glm-5.3", "raison": "hors longueur : 0 unités pour 500-900", "date": "2026-11-13T21:47:29"}
+{"id": "ia_longcat-2.5-free_en_reddit_court_best-way-to-learn-a-language-alone_115", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T22:09:47"}
+{"id": "ia_longcat-2.5-free_en_recipes_moyen_traditional-beef-stew_116", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T22:12:48"}
+{"id": "ia_longcat-2.5-free_en_books_long_two-sisters-meet-again-after-twenty-year_117", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T22:15:48"}
+{"id": "ia_minimax-m3_en_news_moyen_bank-merger-announcement_131", "modele_id": "minimax-m3", "raison": "hors longueur : 604 unités pour 150-300", "date": "2026-11-13T22:24:50"}
+{"id": "ia_step-5-preview_en_wiki_long_the-immune-system_132", "modele_id": "step-5-preview", "raison": "hors longueur : 135 unités pour 500-900", "date": "2026-11-13T22:25:22"}
+{"id": "ia_grok-4.7_en_social_long_asking-for-advice-on-buying-a-bike_138", "modele_id": "grok-4.7", "raison": "hors longueur : 1290 unités pour 500-900", "date": "2026-11-13T22:29:33"}
+{"id": "ia_longcat-2.5-free_fr_news_long_secheresse-dans-le-sud-est_021", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T22:39:58"}
+{"id": "ia_longcat-2.5-free_fr_wiki_court_l-histoire-du-papier_022", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T22:42:58"}
+{"id": "ia_longcat-2.5-free_fr_abstracts_moyen_biodiversite-des-sols-agricoles_023", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T22:46:35"}
+{"id": "ia_glm-5.2_fr_essay_long_les-reseaux-sociaux-rendent-ils-plus-seu_030", "modele_id": "glm-5.2", "raison": "sortie vide après deux tentatives", "date": "2026-11-13T22:51:12"}
+{"id": "ia_minimax-m3_fr_essay_court_le-role-de-l-art-dans-la-societe_040", "modele_id": "minimax-m3", "raison": "hors longueur : 876 unités pour 30-80", "date": "2026-11-13T23:01:19"}
+{"id": "ia_longcat-2.5-free_fr_social_moyen_annoncer-la-naissance-d-un-enfant_068", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T23:13:17"}
+{"id": "ia_longcat-2.5-free_fr_email_long_signaler-un-incident-technique-a-un-four_069", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T23:16:17"}
+{"id": "ia_longcat-2.5-free_fr_essay_court_l-argent-fait-il-le-bonheur_070", "modele_id": "longcat-2.5-free", "raison": "HTTP 429: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded. Please try again later.\"}}", "date": "2026-11-13T23:19:18"}
+{"id": "ia_longcat-2.0_fr_wiki_long_la-photographie-argentique_072", "modele_id": "longcat-2.0", "raison": "hors longueur : 1480 unités pour 500-900", "date": "2026-11-13T23:22:11"}
+{"id": "ia_glm-5.2_fr_books_moyen_un-libraire-recoit-un-manuscrit-anonyme_077", "modele_id": "glm-5.2", "raison": "sortie vide après deux tentatives", "date": "2026-11-13T23:24:27"}
+{"id": "ia_minimax-m3_fr_books_long_une-traversee-de-l-atlantique-a-la-voile_087", "modele_id": "minimax-m3", "raison": "hors longueur : 3365 unités pour 500-900", "date": "2026-11-13T23:30:25"}
+{"id": "ia_hy4_es_books_long_una-travesia-del-atlantico-en-solitario_087", "modele_id": "hy4", "raison": "sortie vide après deux tentatives", "date": "2026-11-14T00:05:25"}
+{"id": "ia_minimax-m3_es_news_court_crisis-del-transporte-maritimo_091", "modele_id": "minimax-m3", "raison": "hors longueur : 737 unités pour 30-80", "date": "2026-11-14T00:12:02"}
+{"id": "ia_glm-5.2_pt_abstracts_long_diagnostico-precoce-por-imagem-medica_033", "modele_id": "glm-5.2", "raison": "sortie vide après deux tentatives", "date": "2026-11-14T00:31:44"}
+{"id": "ia_hy4_pt_books_court_um-relojoeiro-repara-um-relogio-que-nao_037", "modele_id": "hy4", "raison": "sortie vide après deux tentatives", "date": "2026-11-14T00:39:05"}
+{"id": "ia_muse-spark-1.3-contributor_pt_abstracts_long_corrosao-do-aco-em-meio-marinho_063", "modele_id": "muse-spark-1.3-contributor", "raison": "hors longueur : 1070 unités pour 500-900", "date": "2026-11-14T00:53:29"}
+{"id": "ia_minimax-m3.1-flash_pt_books_moyen_um-livreiro-recebe-um-manuscrito-anonimo_077", "modele_id": "minimax-m3.1-flash", "raison": "hors longueur : 1452 unités pour 150-300", "date": "2026-11-14T00:56:58"}
+{"id": "ia_glm-5.2_pt_email_court_felicitar-uma-colega-promovida_079", "modele_id": "glm-5.2", "raison": "sortie vide après deux tentatives", "date": "2026-11-14T00:58:39"}
+{"id": "ia_mimo-v2.6-flash_zh_wiki_moyen_sujet04_032", "modele_id": "mimo-v2.6-flash", "raison": "hors longueur : 0 unités pour 150-300", "date": "2026-11-14T01:17:11"}
+{"id": "ia_mimo-v2.6-flash_zh_abstracts_long_sujet04_033", "modele_id": "mimo-v2.6-flash", "raison": "hors longueur : 1408 unités pour 500-900", "date": "2026-11-14T01:18:18"}
+{"id": "ia_minimax-m3_zh_abstracts_court_sujet05_043", "modele_id": "minimax-m3", "raison": "hors longueur : 934 unités pour 30-80", "date": "2026-11-14T01:21:46"}
+{"id": "ia_glm-5.3-flash_zh_abstracts_moyen_sujet06_053", "modele_id": "glm-5.3-flash", "raison": "hors longueur : 373 unités pour 150-300", "date": "2026-11-14T01:23:09"}
+{"id": "ia_hy4_ar_news_moyen_sujet05_041", "modele_id": "hy4", "raison": "hors longueur : 0 unités pour 150-300", "date": "2026-11-14T01:47:19"}
+{"id": "ia_minimax-m3_ar_wiki_long_sujet05_042", "modele_id": "minimax-m3", "raison": "hors longueur : 3018 unités pour 500-900", "date": "2026-11-14T01:48:49"}
+{"id": "ia_glm-5.2_it_abstracts_long_diagnosi-precoce-con-imaging-medico_033", "modele_id": "glm-5.2", "raison": "sortie vide après deux tentatives", "date": "2026-11-14T02:09:13"}

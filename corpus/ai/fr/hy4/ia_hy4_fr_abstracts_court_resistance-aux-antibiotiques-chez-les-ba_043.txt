@@ -1,0 +1,4 @@
+Contexte : La multirésistance des bactéries Gram négatif menace la santé mondiale.
+Méthode : 150 isolats cliniques ont été soumis à antibiogramme et séquençage génomique.
+Résultats : 68 % produisaient des β-lactamases à spectre étendu ; 12 % portaient mcr-1, réduisant l'efficacité de la colistine.
+Conclusion : La surveillance génomique et les thérapies combinées s'imposent pour préserver les antibiotiques de dernier recours.
