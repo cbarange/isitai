@@ -1,15 +1,21 @@
 //! Native addon for the `isitai` npm package. Returns JSON strings produced by the
 //! Rust core; `index.js` parses them, so every language gets the same bytes.
 
-use isitai::{check_bytes, check_path, check_text, validate_trust_anchors, Options, Rules};
+use isitai::{
+    check_bytes, check_path, check_text_with, validate_prevalence, validate_trust_anchors, Options,
+    Rules,
+};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-/// Fails on an unknown `effort` and on unusable trust anchors; `None` means the default.
+/// Fails on an unknown `effort`, on unusable trust anchors and on a prevalence outside
+/// ]0, 1[; `None` means the default.
 fn options(
     trust_anchors_pem: Option<String>,
     declared_mime: Option<String>,
     effort: Option<String>,
+    score: Option<bool>,
+    prevalence: Option<f64>,
 ) -> Result<Options> {
     if let Some(pem) = &trust_anchors_pem {
         validate_trust_anchors(pem).map_err(Error::from_reason)?;
@@ -18,10 +24,15 @@ fn options(
         .map(|e| e.parse().map_err(Error::from_reason))
         .transpose()?
         .unwrap_or_default();
+    let prevalence = prevalence
+        .map(|p| validate_prevalence(p).map_err(Error::from_reason))
+        .transpose()?;
     Ok(Options {
         trust_anchors_pem,
         declared_mime,
         effort,
+        score: score.unwrap_or(true),
+        prevalence,
     })
 }
 
@@ -30,8 +41,13 @@ fn options(
 pub const DEFAULT_MAX_STREAM_BYTES: f64 = isitai::DEFAULT_MAX_STREAM_BYTES as f64;
 
 #[napi]
-pub fn check_text_json(text: String) -> String {
-    check_text(&text, Rules::shared()).to_json()
+pub fn check_text_json(
+    text: String,
+    score: Option<bool>,
+    prevalence: Option<f64>,
+) -> Result<String> {
+    let opts = options(None, None, None, score, prevalence)?;
+    Ok(check_text_with(&text, &opts, Rules::shared()).to_json())
 }
 
 /// Synchronous: meant for in-memory uploads. Use `checkFileJson` for files on disk.
@@ -41,8 +57,10 @@ pub fn check_buffer_json(
     trust_anchors_pem: Option<String>,
     declared_mime: Option<String>,
     effort: Option<String>,
+    score: Option<bool>,
+    prevalence: Option<f64>,
 ) -> Result<String> {
-    let opts = options(trust_anchors_pem, declared_mime, effort)?;
+    let opts = options(trust_anchors_pem, declared_mime, effort, score, prevalence)?;
     Ok(check_bytes(&data, &opts, Rules::shared()).to_json())
 }
 
@@ -77,9 +95,11 @@ pub fn check_file_json(
     trust_anchors_pem: Option<String>,
     declared_mime: Option<String>,
     effort: Option<String>,
+    score: Option<bool>,
+    prevalence: Option<f64>,
 ) -> Result<AsyncTask<CheckFileTask>> {
     Ok(AsyncTask::new(CheckFileTask {
         path,
-        opts: options(trust_anchors_pem, declared_mime, effort)?,
+        opts: options(trust_anchors_pem, declared_mime, effort, score, prevalence)?,
     }))
 }

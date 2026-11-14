@@ -12,8 +12,25 @@ Catégories : `Ajouté`, `Modifié`, `Déprécié`, `Retiré`, `Corrigé`, `Séc
 ## [Non publié]
 
 ### Ajouté
+- Score statistique du texte brut, sans modèle (`text-light-v1`) : objet `coefficient` du rapport
+  (`lr`, `lr_interval`, `coverage`, `calibration_id`, `prevalence_used`, `posterior`) et `notes`.
+  C'est un rapport de vraisemblance, pas un pourcentage ; `posterior` reste `null` sans prévalence.
+- Verdict `ai-likely` : ni preuve ni indice, et score au-dessus du seuil à 1 % de faux positifs de
+  la table de calibration. Une preuve ou un indice l'emporte toujours.
+- Tables de calibration par langue et par longueur, embarquées (9 Ko). Une seule langue admise à
+  ce jour : l'anglais. Les autres langues et les textes de moins de 150 mots donnent `lr: null`
+  et un avertissement.
+- Options `score` (CLI `--no-score`) et `prevalence` (CLI `--prevalence`) dans la CLI, Node,
+  Python et WASM ; `checkText` / `check_text` acceptent ces options.
+- `bench/light/` : construction du jeu d'entraînement, sélection, calibration, mesures
+  (`results.json`) et test de parité Python / Rust sur 258 textes.
 - Jeu doré de calibration : protocole écrit avant étiquetage, analyse de puissance, règles
   anti-fuite, manifeste avec empreintes SHA-256 (`bench/golden/`).
+
+### Modifié
+- Code de sortie 1 de la CLI : aussi pour `ai-likely`.
+- Un fichier de texte brut reçoit par défaut un objet `coefficient` et, en cas d'abstention, un
+  avertissement supplémentaire ; `--no-score` rend les rapports d'avant.
 
 ### Sécurité
 - Le journal des versions est désormais un prérequis de publication : un tag sans entrée
