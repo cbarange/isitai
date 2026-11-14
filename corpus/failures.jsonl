@@ -119,3 +119,11 @@
 {"id": "ia_hy4_ar_news_moyen_sujet05_041", "modele_id": "hy4", "raison": "hors longueur : 0 unités pour 150-300", "date": "2026-11-14T01:47:19"}
 {"id": "ia_minimax-m3_ar_wiki_long_sujet05_042", "modele_id": "minimax-m3", "raison": "hors longueur : 3018 unités pour 500-900", "date": "2026-11-14T01:48:49"}
 {"id": "ia_glm-5.2_it_abstracts_long_diagnosi-precoce-con-imaging-medico_033", "modele_id": "glm-5.2", "raison": "sortie vide après deux tentatives", "date": "2026-11-14T02:09:13"}
+{"id": "ia_glm-5.2_es_books_long_un-pueblo-entero-pierde-la-memoria-en-un_027", "modele_id": "glm-5.2", "raison": "hors longueur : 0 unités pour 500-900", "date": "2026-11-14T09:51:04"}
+{"id": "ia_kimi-k3.1-pro_es_social_moyen_pedir-consejo-para-comprar-una-bici_038", "modele_id": "kimi-k3.1-pro", "raison": "HTTP 400 au rappel de longueur", "date": "2026-11-14T09:56:10"}
+{"id": "ia_hy4_pt_news_moyen_descida-dos-juros-da-habitacao_041", "modele_id": "hy4", "raison": "sortie vide après deux tentatives", "date": "2026-11-14T09:56:27"}
+{"id": "ia_minimax-m3_en_abstracts_court_antibiotic-resistance-in-gram-negative-b_043", "modele_id": "minimax-m3", "raison": "hors longueur : 291 unités pour 30-80", "date": "2026-11-14T09:56:56"}
+{"id": "ia_gemini-4-argon_zh_abstracts_long_sujet04_033", "modele_id": "gemini-4-argon", "raison": "hors longueur : 1180 unités pour 500-900", "date": "2026-11-14T10:08:18"}
+{"id": "ia_minimax-m3_zh_essay_court_sujet04_040", "modele_id": "minimax-m3", "raison": "hors longueur : 629 unités pour 30-80", "date": "2026-11-14T10:11:01"}
+{"id": "ia_glm-5.3-flash_zh_abstracts_moyen_sujet06_053", "modele_id": "glm-5.3-flash", "raison": "hors longueur : 371 unités pour 150-300", "date": "2026-11-14T10:18:48"}
+{"id": "ia_muse-spark-1.3-contributor_ar_social_long_sujet02_018", "modele_id": "muse-spark-1.3-contributor", "raison": "hors longueur : 176 unités pour 500-900", "date": "2026-11-14T10:27:05"}

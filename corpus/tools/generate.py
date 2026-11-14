@@ -457,6 +457,31 @@ def plan_for(lang: str, models: list[str]) -> list[dict]:
     return rows
 
 
+THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+THINK_OPEN_RE = re.compile(r"<think>.*", re.DOTALL | re.IGNORECASE)
+HTML_RE = re.compile(r"</?[a-zA-Z][a-zA-Z0-9]{0,10}(\s[^<>]{0,120})?/?>")
+BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1", re.DOTALL)
+HEAD_RE = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
+BULLET_RE = re.compile(r"^\s{0,3}[-*+]\s+", re.MULTILINE)
+
+
+def clean_text(text: str) -> str:
+    """Retire le balisage produit par le modèle, avant de mesurer et d'écrire.
+
+    Nettoyer après coup laisse passer les textes écrits entre deux nettoyages, et le
+    corpus se retrouve avec des `<think>` et du Markdown au milieu du texte brut. Le
+    nettoyage appartient donc au chemin d'écriture.
+    """
+    text = THINK_RE.sub("", text)
+    if "<think>" in text.lower():
+        text = THINK_OPEN_RE.sub("", text)
+    text = HTML_RE.sub("", text)
+    text = BOLD_RE.sub(r"\2", text)
+    text = HEAD_RE.sub("", text)
+    text = BULLET_RE.sub("", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def count_units(text: str, lang: str) -> int:
     """Longueur du texte dans l'unité de la langue.
 
@@ -517,7 +542,7 @@ def generate(token: str, row: dict, temperature: float) -> tuple[str, dict]:
                     d = api("/chat/completions", payload, token=token)
                 except Exception:
                     raise RuntimeError(f"HTTP 400 (température imposée) : {body[:120]}")
-                text = (d.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+                text = clean_text((d.get("choices") or [{}])[0].get("message", {}).get("content") or "")
                 if count_units(text, row["langue"]) >= 20:
                     return text, d.get("usage", {})
             raise RuntimeError(f"HTTP {e.code}: {body[:120]}")
@@ -525,7 +550,7 @@ def generate(token: str, row: dict, temperature: float) -> tuple[str, dict]:
             if attempt == 1:
                 raise
             continue
-        text = (d.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        text = clean_text((d.get("choices") or [{}])[0].get("message", {}).get("content") or "")
         usage = d.get("usage", {})
         if count_units(text, row["langue"]) < 20:
             time.sleep(3)
@@ -542,7 +567,7 @@ def generate(token: str, row: dict, temperature: float) -> tuple[str, dict]:
             d = api("/chat/completions", payload, token=token)
         except urllib.error.HTTPError as e:
             raise RuntimeError(f"HTTP {e.code} au rappel de longueur")
-        text = (d.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        text = clean_text((d.get("choices") or [{}])[0].get("message", {}).get("content") or "")
         usage = d.get("usage", {})
         words = count_units(text, row["langue"])
         if lo * 0.85 <= words <= hi * 1.15:

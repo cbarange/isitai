@@ -1,4 +1,4 @@
-**Oggetto:** Sollecito di pagamento – Fattura n. [numero] del [data]
+Oggetto: Sollecito di pagamento – Fattura n. [numero] del [data]
 
 Gentile [Nome e cognome / Ufficio Amministrazione],
 

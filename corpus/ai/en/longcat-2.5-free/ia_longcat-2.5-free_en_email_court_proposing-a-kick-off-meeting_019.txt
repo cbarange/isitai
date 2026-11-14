@@ -1,7 +1,5 @@
-Objet : Proposition de réunion de lancement
+Subject: Proposing a Kick-Off Meeting
 
-Bonjour,
+Dear Team,
 
-Je vous propose une réunion de lancement afin de définir ensemble les objectifs du projet, le calendrier prévisionnel et les responsabilités de chacun. Seriez-vous disponible la semaine prochaine ? Indiquez-moi vos créneaux, et j'enverrai l'invitation accompagnée de l'ordre du jour.
-
-Bien cordialement,
+I propose we hold a kick-off meeting on Tuesday, 15 May, at 10:00 CET to align on objectives, scope, roles, and next steps for the project. Please confirm your availability or suggest an alternative time by Thursday. A brief agenda and video link will follow once the date is confirmed.

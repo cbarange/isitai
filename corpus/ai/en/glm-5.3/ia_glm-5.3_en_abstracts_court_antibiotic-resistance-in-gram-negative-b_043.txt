@@ -1,7 +1,7 @@
-**Background:** Antibiotic resistance in Gram-negative bacteria is escalating worldwide, limiting therapeutic options.
+Background: Antibiotic resistance in Gram-negative bacteria is escalating worldwide, limiting therapeutic options.
 
-**Methods:** We analyzed 500 clinical isolates from three hospitals, performing susceptibility testing and PCR screening for resistance genes.
+Methods: We analyzed 500 clinical isolates from three hospitals, performing susceptibility testing and PCR screening for resistance genes.
 
-**Results:** Sixty-two percent of isolates were multidrug-resistant; blaCTX-M and blaNDM predominated, correlating with carbapenem resistance.
+Results: Sixty-two percent of isolates were multidrug-resistant; blaCTX-M and blaNDM predominated, correlating with carbapenem resistance.
 
-**Conclusion:** Enhanced surveillance and antimicrobial stewardship are urgently needed to curb resistance spread.
+Conclusion: Enhanced surveillance and antimicrobial stewardship are urgently needed to curb resistance spread.
