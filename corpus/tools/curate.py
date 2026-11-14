@@ -30,8 +30,13 @@ def main() -> int:
     args = ap.parse_args()
 
     rows = [json.loads(l) for l in MANIFEST.read_text(encoding="utf-8").splitlines() if l.strip()]
+    # Les textes réaffectés ne comptent pas dans la répartition : ils ont été déplacés
+    # parce qu'ils étaient dans la mauvaise langue, pas pour compléter un quota. Les
+    # élaguer reviendrait à supprimer le travail de réparation.
+    reassigned = [r for r in rows if "langue_demandee" in r]
+    planned = [r for r in rows if "langue_demandee" not in r]
     by_lang: dict[str, list[dict]] = collections.defaultdict(list)
-    for r in rows:
+    for r in planned:
         by_lang[r["langue"]].append(r)
 
     kept: list[dict] = []
@@ -62,12 +67,13 @@ def main() -> int:
         if len(chosen) < target:
             shortfall[lang] = target - len(chosen)
 
+    kept = kept + reassigned
     kept_ids = {r["id"] for r in kept}
     dropped = [r for r in rows if r["id"] not in kept_ids]
 
-    print(f"  gardés : {len(kept)} · écartés : {len(dropped)} (sur {len(rows)})")
+    print(f"  gardés : {len(kept)} (dont {len(reassigned)} réaffectés) · écartés : {len(dropped)}")
     for lang in sorted(TARGETS):
-        n = sum(1 for r in kept if r["langue"] == lang)
+        n = sum(1 for r in kept if r["langue"] == lang and "langue_demandee" not in r)
         flag = "" if n == TARGETS[lang] else f"  ← cible {TARGETS[lang]}"
         print(f"    {lang}: {n}{flag}")
     if shortfall:

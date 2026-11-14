@@ -387,6 +387,17 @@ def monthly_percent(token: str) -> int:
         return -1
 
 
+def slot_key(text_id: str) -> str:
+    """Emplacement d'un texte : son identifiant privé du numéro de séquence.
+
+    L'identifiant contient `_001`, `_002`… qui dépend de l'ordre du plan. Ce numéro change
+    dès que la rotation change, donc une relance ne reconnaissait pas les textes déjà
+    écrits et les dupliquait. Ce qui précède le numéro, en revanche, ne dépend que du
+    modèle, de la langue, du domaine, de la longueur et du sujet.
+    """
+    return text_id.rsplit("_", 1)[0]
+
+
 def existing_ids() -> set[str]:
     if not MANIFEST.exists():
         return set()
@@ -561,6 +572,9 @@ def main() -> int:
     langs = args.lang or LANGS
     CORPUS.mkdir(exist_ok=True)
     seen = existing_ids()
+    # Un texte déjà écrit pour cet emplacement dispense d'en écrire un second, même si
+    # son identifiant diffère : c'est ce qui rend une relance idempotente.
+    seen_slots = {slot_key(r["id"]) for r in map(json.loads, MANIFEST.read_text(encoding="utf-8").splitlines()) if r}
 
     quota = monthly_percent(token)
     print(f"  quota mensuel : {quota} % (plafond {args.quota_ceiling} %)")
@@ -578,7 +592,7 @@ def main() -> int:
             text_id = (f"ia_{row['modele_id']}_{lang}_{row['domaine']}_{row['longueur_cible']}"
                        f"_{subject_slug(row['sujet'], row['sujet_n'])}_{row['n']:03d}")
             target = CORPUS / "ai" / lang / row["modele_id"] / f"{text_id}.txt"
-            if text_id in seen or target.exists():
+            if text_id in seen or target.exists() or slot_key(text_id) in seen_slots:
                 skipped += 1
                 continue
             if args.dry_run:
