@@ -18,7 +18,7 @@ pdf = ["c2pa/pdf"]
 c2pa-text = ["c2pa/unstable_plain_text", "c2pa/unstable_structured_text"]
 
 [dependencies]
-c2pa = { version = "=0.92.0", default-features = false, features = ["rust_native_crypto"] }
+c2pa = { version = "=0.92.1", default-features = false, features = ["rust_native_crypto"] }
 infer = "0.22"
 regex = "1.13"
 serde = { version = "1", features = ["derive"] }
