@@ -7,11 +7,15 @@ mod png;
 mod provenance;
 mod rhetoric;
 mod rules;
+mod score;
 mod text;
 mod xmp;
 
 pub use provenance::validate_trust_anchors;
 pub use rules::Rules;
+#[doc(hidden)]
+pub use score::{raw as light_score_raw, Raw as LightScoreRaw};
+pub use score::{validate_prevalence, Coefficient};
 use serde::Serialize;
 use std::io::{Read, Seek};
 
@@ -22,6 +26,10 @@ pub enum Verdict {
     CaptureProven,
     AiSignal,
     Inconsistent,
+    /// No proof and no signal, and the statistical score of the text is above the
+    /// threshold of its calibration table. An estimate with a measured error rate,
+    /// never a proof: see [`Coefficient`].
+    AiLikely,
     NoSignal,
 }
 
@@ -99,6 +107,14 @@ pub struct Report {
     /// What `history` establishes about edits after creation; absent when it establishes nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub history_summary: Option<HistorySummary>,
+    /// Statistical score of a plain text. Absent when the score is off or the input is
+    /// not plain text; present with `lr: null` when the detector abstained (a warning
+    /// says why). It never produces `ai-proven`, `capture-proven` or `ai-signal`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coefficient: Option<Coefficient>,
+    /// What the coefficient was computed on: detected language, words, calibration data.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
     pub version: Version,
 }
 
@@ -177,7 +193,7 @@ impl std::str::FromStr for Effort {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Options {
     /// PEM bundle of trusted C2PA roots. It **replaces** the default, which is the trust
     /// lists embedded in this crate (`trust/SOURCE.md`): the two official C2PA lists
@@ -191,12 +207,58 @@ pub struct Options {
     /// MIME type claimed by the caller (upload header, extension). Compared with the sniffed one.
     pub declared_mime: Option<String>,
     pub effort: Effort,
+    /// Statistical score of plain text (`coefficient` in the report). On by default.
+    pub score: bool,
+    /// Share of AI text the caller expects among the texts it checks, strictly between
+    /// 0 and 1 (see [`validate_prevalence`]). Without it the report gives a likelihood
+    /// ratio only: the library cannot guess a prevalence, so it gives no posterior.
+    pub prevalence: Option<f64>,
 }
 
-/// Checks a text string.
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            trust_anchors_pem: None,
+            declared_mime: None,
+            effort: Effort::default(),
+            score: true,
+            prevalence: None,
+        }
+    }
+}
+
+/// Checks a text string with the default options.
 pub fn check_text(input: &str, rules: &Rules) -> Report {
+    check_text_with(input, &Options::default(), rules)
+}
+
+/// Checks a text string. Only `score` and `prevalence` of the options apply to text.
+pub fn check_text_with(input: &str, opts: &Options, rules: &Rules) -> Report {
     let evidence = text::scan(input, rules);
-    finish("text/plain".into(), None, evidence, Vec::new(), rules)
+    let mut report = finish("text/plain".into(), None, evidence, Vec::new(), rules);
+    add_score(&mut report, input, opts);
+    report
+}
+
+/// Adds the statistical score of a plain text to its report. The score only ever turns
+/// `no-signal` into `ai-likely`: proofs and signals always win.
+fn add_score(report: &mut Report, text: &str, opts: &Options) {
+    if !opts.score {
+        return;
+    }
+    let prevalence = match opts.prevalence.map(validate_prevalence) {
+        Some(Err(e)) => {
+            report.warnings.push(format!("{e}: no posterior is given"));
+            None
+        }
+        Some(Ok(p)) => Some(p),
+        None => None,
+    };
+    let assessment = score::assess(text, prevalence);
+    report.verdict = with_score(report.verdict, assessment.ai_likely);
+    report.warnings.extend(assessment.warning);
+    report.notes = assessment.notes;
+    report.coefficient = Some(assessment.coefficient);
 }
 
 /// Checks raw bytes (file content). Text is detected when no binary format matches.
@@ -290,7 +352,12 @@ pub fn check_reader<R: Read + Seek + Send>(mut input: R, opts: &Options, rules: 
             Some(t) => ("text/plain", text::scan(t, rules)),
             None => ("application/octet-stream", Vec::new()),
         };
-        return finish(media.into(), None, evidence, warnings, rules);
+        let mut report = finish(media.into(), None, evidence, warnings, rules);
+        // Only plain text is scored: markup (HTML, XML, SVG) is not prose.
+        if let Some(t) = &text {
+            add_score(&mut report, t, opts);
+        }
+        return report;
     };
 
     if let Some(declared) = &opts.declared_mime {
@@ -352,6 +419,15 @@ pub fn check_reader<R: Read + Seek + Send>(mut input: R, opts: &Options, rules: 
     report.history = history;
     report.history_summary = history_summary;
     report
+}
+
+/// The verdict once the statistical score is known: `ai-likely` replaces `no-signal`
+/// only. A proof, a signal or a contradiction is never changed by an estimate.
+fn with_score(verdict: Verdict, ai_likely: bool) -> Verdict {
+    match verdict {
+        Verdict::NoSignal if ai_likely => Verdict::AiLikely,
+        other => other,
+    }
 }
 
 /// Sniffed types whose content is also read as text: what `infer` reports as
@@ -422,6 +498,8 @@ fn finish(
         warnings,
         history: Vec::new(),
         history_summary: None,
+        coefficient: None,
+        notes: Vec::new(),
         version: Version {
             lib: env!("CARGO_PKG_VERSION"),
             rules: rules.version.clone(),
@@ -519,6 +597,96 @@ mod tests {
     }
 
     #[test]
+    fn the_score_only_replaces_no_signal() {
+        use Verdict::*;
+        assert_eq!(with_score(NoSignal, true), AiLikely);
+        assert_eq!(with_score(NoSignal, false), NoSignal);
+        for verdict in [AiProven, CaptureProven, AiSignal, Inconsistent] {
+            assert_eq!(with_score(verdict, true), verdict);
+            assert_eq!(with_score(verdict, false), verdict);
+        }
+        assert_eq!(
+            serde_json::to_value(AiLikely).unwrap(),
+            serde_json::json!("ai-likely")
+        );
+    }
+
+    const ENGLISH: &str = "The harbour office opens at seven in the morning and closes when \
+        the last ferry has left the quay. On a calm day the crossing takes forty minutes, and \
+        the same boat makes six return trips before the evening. ";
+
+    #[test]
+    fn plain_text_gets_a_coefficient_and_markup_does_not() {
+        let rules = Rules::embedded();
+        let text = ENGLISH.repeat(6);
+        let report = check_text(&text, &rules);
+        let coefficient = report.coefficient.as_ref().expect("plain text is scored");
+        assert!(coefficient.lr.is_some());
+        assert_eq!(coefficient.posterior, None);
+        assert!(report.warnings.is_empty());
+        assert_eq!(report.notes[0], "language detected: en");
+        // Explicit nulls: a reader sees that no prevalence was used.
+        let json: serde_json::Value = serde_json::from_str(&report.to_json()).unwrap();
+        assert!(json["coefficient"]["posterior"].is_null());
+        assert!(json["coefficient"]["prevalence_used"].is_null());
+        // The same bytes as a file give the same report.
+        let opts = Options::default();
+        assert_eq!(
+            check_bytes(text.as_bytes(), &opts, &rules).to_json(),
+            report.to_json()
+        );
+
+        // A signal wins: the coefficient is still reported, the verdict is the signal's.
+        let signal = check_text(&format!("{text} {ARTIFACT}"), &rules);
+        assert_eq!(signal.verdict, Verdict::AiSignal);
+        assert!(signal.coefficient.is_some());
+
+        // Markup is not prose: no coefficient, no warning about the score.
+        let html = check_bytes(
+            format!("<!DOCTYPE html><p>{text}</p>").as_bytes(),
+            &opts,
+            &rules,
+        );
+        assert_eq!(html.media, "text/html");
+        assert!(html.coefficient.is_none() && !warns(&html, "score not given"));
+
+        // Off: the report is the one of the other layers.
+        let off = Options {
+            score: false,
+            ..Options::default()
+        };
+        let report = check_text_with(&text, &off, &rules);
+        assert!(report.coefficient.is_none() && report.notes.is_empty());
+    }
+
+    #[test]
+    fn an_abstention_is_a_null_ratio_and_a_warning() {
+        let rules = Rules::embedded();
+        let short = check_text("Back on Monday.", &rules);
+        assert_eq!(short.verdict, Verdict::NoSignal);
+        assert_eq!(short.coefficient.as_ref().unwrap().lr, None);
+        assert_eq!(
+            short.warnings,
+            ["score not given: text too short (3 words, minimum 150)"]
+        );
+        let json: serde_json::Value = serde_json::from_str(&short.to_json()).unwrap();
+        assert!(json["coefficient"]["lr"].is_null());
+        assert!(json["coefficient"]["calibration_id"].is_null());
+        assert!(json.get("notes").is_none());
+
+        // An invalid prevalence gives no posterior, and says so.
+        let opts = Options {
+            prevalence: Some(1.5),
+            ..Options::default()
+        };
+        let report = check_text_with(&ENGLISH.repeat(6), &opts, &rules);
+        let coefficient = report.coefficient.unwrap();
+        assert!(coefficient.lr.is_some());
+        assert_eq!(coefficient.posterior, None);
+        assert!(report.warnings[0].starts_with("prevalence must be"));
+    }
+
+    #[test]
     fn effort_parses_known_names_only() {
         assert_eq!("fast".parse(), Ok(Effort::Fast));
         assert_eq!("standard".parse(), Ok(Effort::Standard));
@@ -531,8 +699,10 @@ mod tests {
     const ARTIFACT: &str = "Paris :contentReference[oaicite:0]{index=0}.";
 
     fn check(bytes: &[u8], effort: Effort) -> Report {
+        // These tests are about the other layers: the score is off.
         let opts = Options {
             effort,
+            score: false,
             ..Options::default()
         };
         check_bytes(bytes, &opts, &Rules::embedded())
@@ -642,7 +812,15 @@ mod tests {
         // Same report as the text input: the mark stays, spans are offsets in the file.
         assert_eq!(
             report.to_json(),
-            check_text(&text, &Rules::embedded()).to_json()
+            check_text_with(
+                &text,
+                &Options {
+                    score: false,
+                    ..Options::default()
+                },
+                &Rules::embedded()
+            )
+            .to_json()
         );
     }
 

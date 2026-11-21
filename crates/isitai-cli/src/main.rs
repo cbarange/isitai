@@ -1,13 +1,18 @@
-//! Usage: isitai [--anchors roots.pem] [--effort fast|standard] [--max-bytes N] [--text "string"] [FILE|-...]
-//! Options apply to the files that follow them. `--anchors` replaces the embedded
+//! Usage: isitai [--anchors roots.pem] [--effort fast|standard] [--max-bytes N] [--no-score]
+//!               [--prevalence P] [--text "string"] [FILE|-...]
+//! Options apply to the files that follow them (`--no-score` and `--prevalence` also to
+//! the `--text` values that follow them).
+//! `--no-score` turns off the statistical score of plain text (`coefficient`);
+//! `--prevalence P` (0 < P < 1) is the share of AI text you expect: with it the report
+//! also gives a posterior, without it a likelihood ratio only. `--anchors` replaces the embedded
 //! trust lists (official C2PA lists and interim list), for signers and for time-stamps.
 //! `-` reads standard input, whole and into memory, up to `--max-bytes` (default 256 MiB).
 //! Prints one JSON report per input. Exit: 0 nothing found (which does not mean
-//! human-made), 1 AI signal or proof, 2 error.
+//! human-made), 1 AI proof, signal or `ai-likely` (a statistical estimate), 2 error.
 
 use isitai::{
-    check_reader, check_stream, check_text, validate_trust_anchors, Options, Report, Rules,
-    Verdict, DEFAULT_MAX_STREAM_BYTES,
+    check_reader, check_stream, check_text_with, validate_prevalence, validate_trust_anchors,
+    Options, Report, Rules, Verdict, DEFAULT_MAX_STREAM_BYTES,
 };
 use std::process::ExitCode;
 
@@ -34,8 +39,18 @@ fn main() -> ExitCode {
                 Some(Ok(n)) => max_bytes = n,
                 _ => return usage("--max-bytes needs a number of bytes"),
             },
+            "--no-score" => opts.score = false,
+            "--prevalence" => match args.next().map(|p| p.parse::<f64>()) {
+                Some(Ok(p)) => match validate_prevalence(p) {
+                    Ok(p) => opts.prevalence = Some(p),
+                    Err(e) => return usage(&e),
+                },
+                _ => return usage("--prevalence needs a number between 0 and 1"),
+            },
             "--text" => match args.next() {
-                Some(t) => reports.push(serde_json::to_value(check_text(&t, &rules)).unwrap()),
+                Some(t) => {
+                    reports.push(serde_json::to_value(check_text_with(&t, &opts, &rules)).unwrap())
+                }
                 None => return usage("--text needs a value"),
             },
             "-h" | "--help" => return usage(""),
@@ -135,15 +150,22 @@ fn usage(msg: &str) -> ExitCode {
         eprintln!("error: {msg}");
     }
     eprintln!(
-        "usage: isitai [--anchors roots.pem] [--effort fast|standard] [--max-bytes N] [--text \"string\"] [FILE|-...]"
+        "usage: isitai [--anchors roots.pem] [--effort fast|standard] [--max-bytes N] [--no-score] [--prevalence P] [--text \"string\"] [FILE|-...]"
     );
     eprintln!("Options apply to the files that follow them.");
+    eprintln!("--no-score and --prevalence also apply to the --text values that follow them.");
+    eprintln!(
+        "--no-score turns off the statistical score of plain text (the `coefficient` object)."
+    );
+    eprintln!("--prevalence P (0 < P < 1): share of AI text you expect; adds a posterior to the likelihood ratio.");
     eprintln!("- reads standard input, whole and into memory, up to --max-bytes (default {DEFAULT_MAX_STREAM_BYTES}).");
     eprintln!(
         "--anchors replaces the embedded trust lists (official C2PA lists and interim list),"
     );
     eprintln!("for signers and for time-stamps.");
-    eprintln!("Exit code: 0 nothing found, 1 AI signal or proof, 2 error.");
+    eprintln!(
+        "Exit code: 0 nothing found, 1 AI proof, signal or ai-likely (an estimate), 2 error."
+    );
     eprintln!("Exit code 0 does not mean human-made: it means no proof and no signal was found.");
     ExitCode::from(2)
 }

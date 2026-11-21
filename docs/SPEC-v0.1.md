@@ -103,6 +103,7 @@ type Verdict =
   | "capture-proven"   // manifeste C2PA valide, certificat de confiance, capture appareil
   | "ai-signal"        // indice non signé ou C2PA non fiable
   | "inconsistent"     // indices contradictoires (ex. IPTC IA + C2PA capture)
+  | "ai-likely"        // ni preuve ni indice ; score statistique au-dessus du seuil à 1 % de faux positifs
   | "no-signal";       // rien trouvé ; ne veut PAS dire humain
 
 interface Result {
@@ -131,6 +132,30 @@ Règles de verdict, appliquées dans l'ordre. Une preuve (`proof`) n'est pas ann
 4. Sinon, des indices IA et capture présents ensemble donnent `inconsistent`.
 5. Au moins un indice IA `strong`, ou deux `weak` distincts, donnent `ai-signal`.
 6. Sinon : `no-signal`.
+7. Pour un texte brut seulement, et seulement si le verdict est `no-signal` : le score statistique peut le remplacer par `ai-likely` (voir « Texte, score statistique »). Il ne modifie aucun autre verdict et ne produit jamais `ai-proven`, `capture-proven` ni `ai-signal`. La couche `rhetoric` ne change aucun verdict.
+
+### Coefficient (texte brut)
+
+Forme fixée par `docs/research/FALLBACK-probabilistic.md` §7. Là où `docs/research/OSS-patterns-reuse.md` §7 propose `confidence {value, kind}`, c'est le §7 de FALLBACK qui est suivi : aucun pourcentage n'est rendu.
+
+```ts
+interface Result {
+  // ...
+  coefficient?: Coefficient;   // absent si le score est désactivé ou si l'entrée n'est pas du texte brut
+  notes?: string[];            // langue détectée, mots analysés, taille de la table de calibration
+}
+
+interface Coefficient {
+  lr: number | null;                     // rapport de vraisemblance ; null = abstention (un warning dit pourquoi)
+  lr_interval: [number, number] | null;  // intervalle bootstrap de lr
+  coverage: number | null;               // couverture de l'intervalle (0,9)
+  calibration_id: string | null;         // "text-light-v1/<langue>/<date de la table>"
+  prevalence_used: number | null;        // l'option `prevalence`, si elle est fournie
+  posterior: number | null;              // lr·p / (lr·p + 1 − p) ; null sans prévalence
+}
+```
+
+Options : `score` (défaut : activé ; CLI `--no-score`, Node `score: false`, Python `score=False`, WASM 2ᵉ argument de `check_text_json`) et `prevalence` (part de textes IA attendue, strictement entre 0 et 1 ; CLI `--prevalence`, Node `prevalence`, Python `prevalence`). Une prévalence hors de cet intervalle est une erreur dans la CLI et les bindings.
 
 ## Règles de détection
 
@@ -196,6 +221,17 @@ Toutes ces règles restent marquées `verified = false` tant qu'elles ne sont pa
 - **Piège** : U+202F et U+00A0 sont de la typographie française normale (`« »`, `:`, `?`). On ne s'en sert jamais comme signal.
 - **Piège** : le tiret cadratin et les tournures « IA » ne sont pas des preuves. On les exclut de la v0.1.
 - Les motifs vivent dans un fichier `crates/isitai-core/rules/*.toml` versionné, comme la liste de Mailchecker, pour qu'une contribution n'ait pas besoin de toucher au code.
+
+### Texte, score statistique (`text-light-v1`)
+
+Estimation, jamais une preuve. Aucun modèle neuronal, aucune dépendance ajoutée : `crates/isitai-core/src/score.rs` et 9 Ko de données embarquées (`crates/isitai-core/model/light-text-v1.json`). Méthode, données et mesures : `bench/light/README.md`.
+
+- **Normalisation** avant tout calcul : sauts de ligne et espaces réduits, marqueurs Markdown, caractères de largeur nulle, liens et renvois `[12]` retirés, espaces avant la ponctuation recollées, 1 000 premiers mots. Le score ne lit pas la mise en page.
+- **Onze caractéristiques**, retenues parce que leur sens (IA ou humain) est le même dans chaque source et chaque langue du jeu d'entraînement : dispersion des longueurs de phrase (3), part de phrases courtes, longueur des mots (3), parenthèses, chiffres, mots en capitales, phrases sans majuscule initiale. Régression logistique sur les scores centrés-réduits, bornés à ±4.
+- **Calibration par langue et par tranche de longueur** (150, 200, 300 mots et plus), sur des scores obtenus hors famille de source. Une langue n'a de table que si elle a au moins 200 textes humains natifs et 200 textes IA, issus d'au moins deux familles de sources chacun. Aujourd'hui : anglais seulement.
+- **Abstention** : moins de 150 mots, ou langue sans table. `lr` vaut alors `null` et un `warning` dit pourquoi. Jamais de valeur devinée.
+- **`ai-likely`** : score au-dessus du seuil conforme à 1 % de faux positifs de la table (le plus haut des seuils par famille de source) et borne basse de l'intervalle de `lr` au-dessus de 1.
+- **Parité** : `bench/light/features.py` est la référence ; `cargo test` compare le port Rust sur 258 textes (`crates/isitai-core/tests/light_parity.rs`, tolérance 1e-3).
 
 ## Architecture
 

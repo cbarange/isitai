@@ -12,6 +12,7 @@ isitai does not guess. It reads what the file says about itself and reports the 
 | `capture-proven` | A valid C2PA manifest, signed by a trusted certificate, declares a camera capture, and nothing points to AI. |
 | `ai-signal` | Unsigned metadata, an untrusted C2PA manifest, or AI copy-paste artifacts in text. |
 | `inconsistent` | The evidence contradicts itself: AI and capture evidence without a proof, a proven capture with any AI hint, or two proofs. |
+| `ai-likely` | No proof and no signal, but the statistical score of a plain text is above its 1 % false-positive threshold. **An estimate with a measured error rate, never a proof**: see [Confidence score](#confidence-score-text). |
 | `no-signal` | Nothing found. **This does not mean "human"**: most platforms strip metadata. |
 
 ## Install
@@ -213,6 +214,50 @@ The page uses relative paths only, so it can be hosted at a domain root or under
 Text files are read as UTF-8 (with or without a byte order mark), as UTF-16 LE or BE when they start with a byte order mark, and otherwise as Windows-1252 (which covers Latin-1), but only when the content is clearly text: no NUL byte and no control byte other than tab, line feed, carriage return and form feed in the first 8 KiB. A warning names the encoding when it is not UTF-8: `text decoded as UTF-16LE`, `text decoded as UTF-16BE`, `text decoded as Windows-1252`. Anything else is not read as text and gives the warning `text not analysed: the content is not UTF-8`.
 
 Text spans in `evidence[].location` are UTF-8 byte offsets; use `location.text` instead of slicing your string. For a UTF-16 or Windows-1252 file, they are offsets in the decoded text, not in the file; the UTF-16 byte order mark is not part of the decoded text.
+
+## Confidence score (text)
+
+For plain text, isitai also gives a **statistical estimate**, in the `coefficient` object. It is not a proof and not a percentage of truth. Detector `text-light-v1`: eleven counts over the text (sentence-length variation, word length, brackets, digits, capitals), a weighted sum, and a calibration table per language. No neural model, 9 kB of data, about 0.2 ms per text.
+
+```json
+{
+  "verdict": "no-signal",
+  "coefficient": {
+    "lr": 1.4072,
+    "lr_interval": [1.3206, 2.8296],
+    "coverage": 0.9,
+    "calibration_id": "text-light-v1/en/2026-11-12",
+    "prevalence_used": null,
+    "posterior": null
+  },
+  "notes": ["language detected: en", "words analysed: 179", "calibration: 4757 human and 4680 AI texts of 150 words or more, scored out of their source family"]
+}
+```
+
+- **`lr` is a likelihood ratio**: how much more often this score is seen on AI text than on human text in the calibration data. Above 1 points to AI, below 1 to human. It is **not** the probability that the text is AI-made: that depends on how much AI text there is among the texts you check, which the library cannot know. `lr_interval` is a bootstrap interval at the stated `coverage`.
+- **`posterior`** is given only when you give the share of AI text you expect: `--prevalence 0.1`, `{ prevalence: 0.1 }`, `prevalence=0.1`. Without it, `prevalence_used` and `posterior` are `null`.
+- **The detector abstains** (`lr: null`, and a warning that says why) when the text has **fewer than 150 words**, or when there is **no calibration table for its language**. Today there is one table: **English**. French, German, Spanish, Italian and every other language abstain: the data at hand held 29 native French human texts of 150 words or more, where the admission rule needs 200 from two sources.
+- **`ai-likely`** is the verdict when there is no proof and no signal, the score is above the threshold set for 1 % of false positives on the calibration humans, and the whole interval of `lr` is above 1. A proof or a signal always wins over the score. The score never gives `ai-proven`, `capture-proven` or `ai-signal`.
+- Turn it off with `--no-score`, `{ score: false }`, `score=False`. Files that are not plain text (HTML, XML, images) are not scored.
+
+**Measured error rates** (English texts of 150 words or more; data and method in [`bench/light/README.md`](bench/light/README.md); 95 % Wilson intervals):
+
+| Texts | Human texts given `ai-likely` | AI texts given `ai-likely` | Human texts above the 5 % threshold | AI texts above the 5 % threshold |
+|---|---|---|---|---|
+| RAID, sources seen in training (`test`) | 3 of 884 (0.1–1.0 %) | 27 of 597 (3.1–6.5 %) | 37 of 884 (3.1–5.7 %) | 112 of 597 (16–22 %) |
+| Other domains and generators (`test_ood`) | 1 of 349 (0.05–1.6 %) | 14 of 356 (2.4–6.5 %) | 10 of 349 (1.6–5.2 %) | 83 of 356 (19–28 %) |
+| Attacked texts (`test_attack`) | 0 of 395 (≤ 1.0 %) | 8 of 309 (1.3–5.0 %) | 11 of 395 (1.6–4.9 %) | 42 of 309 (10–18 %) |
+| Fiction, models of 2026 (`test_fiction`) | 0 of 250 (≤ 1.5 %) | **0 of 250** | 0 of 250 | **0 of 250** |
+| Wikipedia before 2019, 300-word parts | 0 of 84 (≤ 4.4 %) | — | 3 of 84 (1.2–10 %) | — |
+| Golden set, human class (`bench/golden`) | 0 of 74 (≤ 4.9 %) | 1 of 40 | 0 of 74 | 20 of 40 |
+| French, every set | not scored | not scored | not scored | not scored |
+
+Read this table before you use the score:
+
+- **It misses almost everything.** At the `ai-likely` threshold it finds 3 to 6 % of AI texts, and none of the fiction written by 2026 models. The largest `lr` the table can give is about 2.3: weak evidence. A low `lr` does not mean "human".
+- **The false-positive rate is the part that holds**: at or under the target on every English set measured, including sources never seen in training. On the golden set, 74 human texts allow one claim only: false positives ≤ 4.9 % (95 %).
+- **Do not use it to grade, accuse or reject a person.** This family of detectors is known to flag writers who are not native speakers far more often (Liang et al., 2023: 61 % of TOEFL essays). That population was not measured here.
+- The rates are measured on corpora sampled by class. They say nothing about the share of AI text in your own flow.
 
 ## Known limits
 

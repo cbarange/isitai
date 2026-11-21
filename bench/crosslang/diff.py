@@ -1,6 +1,8 @@
 """Criterion 5: the CLI, the Node binding and the Python binding must return the
 same report for the same file. Runs all three on every file of the given dirs,
 with and without trust anchors, and diffs the reports (CLI `path` field removed).
+The text files of `bench/crosslang/text/` are always added; the pass with trust anchors
+also sets a prevalence (0.1), so `coefficient.posterior` is compared too.
 
 Usage: python3 -I diff.py <isitai CLI> <bindings/node dir> <python with isitai installed> <anchors.pem> DIR...
 Exit code 0 when every report is identical.
@@ -9,9 +11,11 @@ import json, os, subprocess, sys
 
 cli, node_dir, py, anchors, *dirs = sys.argv[1:]
 here = os.path.dirname(os.path.abspath(__file__))
+dirs = [os.path.join(here, "text"), *dirs]
+PREVALENCE = "0.1"
 files = sorted(
     os.path.join(d, n) for d in dirs for n in os.listdir(d)
-    if os.path.isfile(os.path.join(d, n)) and not n.endswith((".pem", ".json"))
+    if os.path.isfile(os.path.join(d, n)) and not n.endswith((".pem", ".json")) and n != "README.md"
 )
 
 
@@ -23,7 +27,7 @@ def lines(cmd):
 def cli_reports(use_anchors):
     reports = {}
     for f in files:
-        cmd = [cli] + (["--anchors", anchors] if use_anchors else []) + [f]
+        cmd = [cli] + (["--anchors", anchors, "--prevalence", PREVALENCE] if use_anchors else []) + [f]
         p = subprocess.run(cmd, capture_output=True, text=True)
         r = json.loads(p.stdout)[0] if p.stdout.strip() else {"error": p.stderr.strip()}
         r.pop("path", None)
@@ -38,10 +42,11 @@ def canon(r):
 failures = 0
 for use_anchors in (False, True):
     a = anchors if use_anchors else "-"
+    p = PREVALENCE if use_anchors else "-"
     results = {
         "cli": cli_reports(use_anchors),
-        "node": lines(["node", os.path.join(here, "run_node.js"), node_dir, a, *files]),
-        "python": lines([py, "-I", os.path.join(here, "run_python.py"), a, *files]),
+        "node": lines(["node", os.path.join(here, "run_node.js"), node_dir, a, p, *files]),
+        "python": lines([py, "-I", os.path.join(here, "run_python.py"), a, p, *files]),
     }
     for f in files:
         name = os.path.basename(f)
